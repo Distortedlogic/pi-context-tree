@@ -1,9 +1,9 @@
 /**
  * /undo (v0.2 friction-killers): one-key revert of the last pi-context-tree
  * mutation. Append-only — nothing is deleted. Each mutation records its
- * pre-mutation anchor (fork.parentEntryId / close.prevLeafId / crop.sourceLeafId);
- * /undo navigates the leaf back there, so a squash re-opens its branch, a crop
- * restores the originals, a /branch drops back to where you branched. The markers
+ * pre-mutation anchor (fork.parentEntryId / close.prevLeafId / crop or range sourceLeafId);
+ * /undo navigates the leaf back there, so a squash re-opens its branch, a crop or
+ * range compaction restores the originals, and a /branch returns to its parent. The markers
  * stay in history, off-path and recoverable. It reverts the last *active* mutation
  * (the most recent one still on the current path) — repeat /undo to peel further.
  */
@@ -12,9 +12,11 @@ import {
 	CTREE_CLOSE,
 	CTREE_CROP,
 	CTREE_FORK,
+	CTREE_RANGE_COMPACT,
 	type CtreeCropData,
 	ctreeCloseData,
 	ctreeForkData,
+	ctreeRangeCompactData,
 } from "@pi-context-tree/core";
 import type { CmdCtxLike, PiLike } from "./adapter.ts";
 import { refreshAmbient } from "./ambient.ts";
@@ -48,6 +50,15 @@ function lastUndo(state: SessionState): UndoStep | undefined {
 			return {
 				target: d.sourceLeafId,
 				describe: `restore ${n} cropped item${n === 1 ? "" : "s"} — back to before the crop`,
+			};
+		}
+		if (customType === CTREE_RANGE_COMPACT) {
+			const d = ctreeRangeCompactData(e);
+			if (!d) continue;
+			const n = d.selectedEntryIds.length;
+			return {
+				target: d.sourceLeafId,
+				describe: `restore compressed message range (${n} entr${n === 1 ? "y" : "ies"}) — summary and marker stay in off-path history`,
 			};
 		}
 		if (customType === CTREE_FORK) {

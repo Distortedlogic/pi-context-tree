@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CHARS_PER_TOKEN, SessionTree, planRange, renderRangeTail } from "@pi-context-tree/core";
 import { SessionBuilder } from "@pi-context-tree/core/testkit";
 import { afterEach, describe, expect, it } from "vitest";
 import { expectGolden } from "./golden.ts";
@@ -270,6 +271,91 @@ describe.skipIf(!PI)("rpc goldens", () => {
 			expect(mock.unexpected).toHaveLength(0);
 
 			expectGolden("tournament.jsonl", normalizeSession(raw));
+		},
+	);
+
+	it(
+		"range compaction: original bytes stay unchanged, tail precedes marker, resumed context uses rebuilt branch",
+		{ timeout: 120_000 },
+		async () => {
+			const mock = new MockOpenAI();
+			mocks.push(mock);
+			mock.turns.push({ text: "resumed from rebuilt range context", usage: { input: 30, output: 6 } });
+			let originalText = "";
+			let tailId = "";
+			let markerId = "";
+			let selectedIds: string[] = [];
+
+			const { raw } = await withScenario(mock, {}, async (pi, sandbox) => {
+				const b = new SessionBuilder(sandbox.cwd);
+				b.modelChange("mock", "trunk-1");
+				b.user("before range question");
+				b.assistant("before range answer", { provider: "mock", model: "trunk-1" });
+				const start = b.user("inside range start — investigate cache invalidation");
+				const end = b.assistant("inside range end — stale key caused the failure", {
+					provider: "mock",
+					model: "trunk-1",
+				});
+				b.user("after range question — implement the fix");
+				const sourceLeafId = b.assistant("after range answer — implementation is pending", {
+					provider: "mock",
+					model: "trunk-1",
+				});
+				const original = b.build();
+				originalText = original.text;
+				const plan = planRange(SessionTree.fromEntries(original.entries), sourceLeafId, start, end);
+				selectedIds = [...plan.selectedEntryIds];
+				const summary = "Approved summary: cache invalidation failed because a stale key survived.";
+				const summaryEstTokens = Math.ceil(summary.length / CHARS_PER_TOKEN);
+				const details = {
+					v: 1 as const,
+					sourceLeafId,
+					anchorId: plan.anchorId,
+					startEntryId: plan.startEntryId,
+					endEntryId: plan.endEntryId,
+					selectedEntryIds: [...plan.selectedEntryIds],
+					selectedEstTokens: plan.selectedEstTokens,
+					summaryEstTokens,
+					reclaimedEstTokens: plan.selectedEstTokens - summaryEstTokens,
+					summaryModel: "mock/trunk-1",
+					sourceSha8: plan.sourceSha8,
+				};
+				b.at(plan.anchorId);
+				tailId = b.customMessage("ctree/range-tail", renderRangeTail(plan, summary), true, details);
+				markerId = b.custom("ctree/range-compact", details);
+				const fixture = join(sandbox.root, "range-seed.jsonl");
+				writeFileSync(fixture, b.build().text);
+
+				await pi.request({ type: "switch_session", sessionPath: fixture });
+				await pi.turn("resume work after range compaction");
+			});
+
+			// Append-only proof: every original header/entry byte is still the exact file prefix.
+			expect(raw.slice(0, originalText.length)).toBe(originalText);
+			const entries = entriesOf(raw);
+			const tail = entries.find((entry) => entry.id === tailId) as Entry;
+			const marker = entries.find((entry) => entry.id === markerId) as Entry;
+			expect(tail.customType).toBe("ctree/range-tail");
+			expect(marker.customType).toBe("ctree/range-compact");
+			expect(entries.indexOf(tail) + 1).toBe(entries.indexOf(marker));
+			expect(marker.parentId).toBe(tail.id);
+			expect(marker.data?.selectedEntryIds).toEqual(selectedIds);
+			expect(tail.content).toContain("Approved summary: cache invalidation failed");
+			expect(tail.content).toContain("after range question — implement the fix");
+			expect(tail.content).toContain("after range answer — implementation is pending");
+			expect(tail.content).not.toContain("inside range start");
+			expect(tail.content).not.toContain("inside range end");
+
+			// A real resumed agent turn receives the rebuilt branch, not the off-path selected source.
+			const resumed = mock.requests.find((request) => request.hasTools);
+			const resumedBody = JSON.stringify(resumed?.body ?? {});
+			expect(resumedBody).toContain("Approved summary: cache invalidation failed");
+			expect(resumedBody).toContain("after range question — implement the fix");
+			expect(resumedBody).not.toContain("inside range start");
+			expect(resumedBody).not.toContain("inside range end");
+			expect(ofType(entries, "branch_summary")).toHaveLength(0);
+			expect(mock.requests.filter((request) => request.hasTools).map((request) => request.model)).toEqual(["trunk-1"]);
+			expect(mock.unexpected).toHaveLength(0);
 		},
 	);
 

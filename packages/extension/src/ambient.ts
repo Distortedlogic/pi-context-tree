@@ -69,7 +69,10 @@ function trendMarker(pct: number, estimated: boolean, consumers: Map<string, num
 function nudgeOnRed(ctx: CtxLike, b: string): void {
 	if (b === "red" && !warnedRed) {
 		warnedRed = true;
-		ctx.ui.notify("context crossed 40% of the window — consider /merge, /crop or /branch (F5.3)", "warning");
+		ctx.ui.notify(
+			"context crossed 40% of the window — consider /merge, /compress, /crop, or /branch (F5.3)",
+			"warning",
+		);
 	}
 	if (b !== "red") warnedRed = false;
 }
@@ -136,7 +139,7 @@ export function registerAmbient(pi: PiLike): void {
 	pi.on?.("session_tree", (_e, ctx) => refreshAmbient(pi, ctx));
 	pi.on?.("session_before_compact", (_e, ctx) => {
 		ctx.ui.notify(
-			"heads-up: /compact replaces source material with a lossy summary — pi-context-tree prefers /branch + /merge (decision records) or /crop. Continuing anyway (F5.4).",
+			"heads-up: /compact replaces source material with a lossy summary — pi-context-tree prefers /branch + /merge (decision records), /compress (reviewed range summaries), or /crop. Continuing anyway (F5.4).",
 			"warning",
 		);
 		return undefined; // never block

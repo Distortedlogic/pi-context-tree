@@ -1,13 +1,25 @@
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SessionTree, planRange } from "@pi-context-tree/core";
 import { describe, expect, it } from "vitest";
-import { openPanel, registerPanel } from "../src/panel-cmd.ts";
-import { makeFake } from "./fake-pi.ts";
+import type { CtxLike } from "../src/adapter.ts";
+import { executePanelAction, openPanel, registerPanel } from "../src/panel-cmd.ts";
+import { type FakeWorld, entriesByType, makeFake } from "./fake-pi.ts";
 
 interface CapturedMount {
 	options?: { overlay?: boolean; overlayOptions?: { width?: string; maxHeight?: string } };
 	panel?: { opts?: { maxBody?: number } };
+}
+
+function rangePlan(w: FakeWorld) {
+	w.session.user("root");
+	w.session.assistant("anchor");
+	const start = w.session.user("selected work");
+	const end = w.session.assistant("selected result");
+	w.session.user("continuation question");
+	const leaf = w.session.assistant("continuation answer");
+	return planRange(SessionTree.fromEntries(w.session.entries), leaf, start, end);
 }
 
 describe("panel reopens after an action (mockup: the panel stays up)", () => {
@@ -41,6 +53,72 @@ describe("panel reopens after an action (mockup: the panel stays up)", () => {
 		registerPanel(w.pi, { draft: async () => "unused" });
 		await w.commands.get("panel")?.("", w.ctx);
 		expect(opens).toBe(1);
+	});
+});
+
+describe("panel range actions", () => {
+	it("dispatches range-apply through the dynamic range module with default panel instructions", async () => {
+		const w = makeFake();
+		const plan = rangePlan(w);
+		let draftUser = "";
+		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
+
+		await executePanelAction(
+			w.pi,
+			w.ctx,
+			{ type: "range-apply", plan },
+			{
+				draft: async (_ctx, _model, _system, user) => {
+					draftUser = user;
+					return "approved panel summary";
+				},
+			},
+		);
+
+		expect(draftUser).toContain("Create a concise continuation summary");
+		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(1);
+		expect(entriesByType(w.session, "custom", "ctree/range-compact")).toHaveLength(1);
+	});
+
+	it("rejects range mutation without command context", async () => {
+		const w = makeFake();
+		const plan = rangePlan(w);
+		const viewOnlyCtx: CtxLike = {
+			ui: w.ui,
+			sessionManager: w.ctx.sessionManager,
+			model: w.ctx.model,
+			modelRegistry: w.ctx.modelRegistry,
+			getContextUsage: w.ctx.getContextUsage,
+		};
+
+		await executePanelAction(w.pi, viewOnlyCtx, { type: "range-apply", plan }, { draft: async () => "unused" });
+
+		expect(w.ui.notes().some((note) => note.includes("needs a command context"))).toBe(true);
+		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+	});
+
+	it("revalidates sourceLeafId before dispatch writes or drafts", async () => {
+		const w = makeFake();
+		const plan = rangePlan(w);
+		w.session.user("new leaf after panel selection");
+		let drafted = false;
+
+		await executePanelAction(
+			w.pi,
+			w.ctx,
+			{ type: "range-apply", plan },
+			{
+				draft: async () => {
+					drafted = true;
+					return "must not run";
+				},
+			},
+		);
+
+		expect(drafted).toBe(false);
+		expect(w.calls.navigate).toHaveLength(0);
+		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+		expect(w.ui.notes().some((note) => note.includes("session changed"))).toBe(true);
 	});
 });
 

@@ -1,9 +1,10 @@
 # pi-context-tree — PRD & TRD
 
-**Version:** 0.3
+**Version:** 0.4
 **Owner:** Naveen
-**Target platform:** pi (the earendil-works coding agent)
-**Status:** Ready for implementation
+**Target platform:** Pi (the earendil-works coding agent)
+**Status:** Implemented
+**v0.4 changes:** added user-driven `/compress` range planning, review, persistence, undo, TUI, and safety contracts.
 **v0.3 changes (research pass, 2026-06-12):** pinned pi's canonical repo to `earendil-works/pi-mono` (badlogic URLs redirect); F2.5 now targets the verified `BranchSummaryEntry` summarize-on-leave mechanism; decision records gain an **Assumptions** field (Forky-inspired) and a ~1–2k-token size guideline (Anthropic's distilled-summary envelope); fork labels documented as doubling as named checkpoints (F1.6); added Part 3 (prior art & evidence); the 5–15% band is explicitly an opinionated heuristic.
 **v0.2 changes:** Rich TUI panel is now the primary management surface (launchable from inside pi); adopted `/branch` `/merge` `/crop` vocabulary; added discard-merge, interactive crop, title-bar branding, context gauge with health band, context-consumer stats; web dashboard demoted to v2.
 
@@ -31,11 +32,12 @@ Pi already provides the substrate: tree-structured sessions (`id`/`parentId`), `
 Pi sessions are trees, but the workflow around them is manual: labels, branch hygiene, merging findings back, and pruning bulk are all ad-hoc. There is no single panel where the user can *see* the tree with token costs and *act* on it (branch, merge, crop, jump). This tool adds:
 
 1. **`/branch <name> [model]`** — label the current point and branch off (optionally onto a cheaper model).
-2. **`/merge`** — interactive flow to close a branch: **squash** (decision record to the label point), **discard** (return, inject nothing), or **tournament** (winner record + epitaphs for sibling branches).
-3. **`/crop`** — surgically remove specific context entries (huge tool/MCP results) with per-entry token estimates; rule-based `--auto` mode.
-4. **Context Panel** — a full-screen rich TUI, launched from inside pi or standalone, to browse and manage the tree.
-5. **Ambient UI** — title bar showing project+branch (color derived from name), context gauge with green→red gradient and health band.
-6. **`pitree`** — forest CLI across all projects (dangling-branch detection), with `pitree ui` opening the panel standalone.
+2. **`/merge`** — close a branch by squash, discard, or tournament.
+3. **`/compress [instructions]`** — select one continuous active-context range, draft and review its summary, and keep the unchanged continuation.
+4. **`/crop`** — remove selected large tool results or a complete Q&A turn with append-only recovery.
+5. **Context Panel** — a full-screen TUI for tree, range, crop, decision, consumer, and inspection views.
+6. **Ambient UI** — title, context gauge, trend, and guidance.
+7. **`pitree`** — read-only forest CLI and standalone panel across projects.
 
 ## 2. Goals
 
@@ -69,6 +71,9 @@ Before branching, two giant MCP results (40k tokens) sit in the trunk. `/crop` o
 ### F — forest review
 `pitree` prints all projects' trees with dangling branches flagged; `pitree ui` opens the same panel standalone in read-only forest mode.
 
+### G — reviewed range compression
+`/compress preserve exact commands` opens the full tree. The user selects a safe start and end on the active context path. The current model drafts from only that range. The user reviews the draft. Apply writes the summary plus unchanged continuation on a new branch and leaves every source entry unchanged.
+
 ## 5. Functional requirements
 
 ### F1 `/branch <name> [model]`
@@ -96,7 +101,7 @@ Before branching, two giant MCP results (40k tokens) sit in the trunk. `/crop` o
 - F4.1 Launch: `/panel` command and a registered shortcut (default `Ctrl+Q`, configurable) inside pi; `pitree ui` standalone.
 - F4.2 Views: **Tree** (current session), **Forest** (standalone: all projects), **Decisions** (all decision records on trunk), **Consumers** (tokens aggregated by tool/entry type — makes MCP bloat visible), **Entry inspector** (full content of any node).
 - F4.3 Tree rendering: glyph per entry type; est. tokens per node; branch labels with status color (active/dangling/squashed/rejected); current leaf highlighted; collapsed-by-default closed branches.
-- F4.4 Keybindings (single keystroke): navigate ↑↓/jk, expand/collapse, `enter` jump leaf to node, `b` branch here, `m` merge flow, `c` crop mode, `i` inspect, `D` decisions, `u` consumers, `q`/`esc` close. Help footer always visible.
+- F4.4 Keybindings (single keystroke): navigate ↑↓/jk, expand/collapse, `enter` jump leaf to node, `b` branch here, `m` merge flow, `c` crop mode, `r` range mode, `i` inspect, `D` decisions, `u` consumers, `q`/`esc` close. In range mode: `Space` start/end, `x` clear, `Enter` confirm, `Esc` tree, `q` close. Help footer always visible.
 - F4.5 Header: session name · branch · context gauge (see F5) · model.
 - F4.6 In-pi mutations go through `ExtensionCommandContext` after `waitForIdle()`; standalone panel is **read-only** in v1 (mutation via RPC attach is v2).
 
@@ -111,6 +116,17 @@ As v0.1 (scan `~/.pi/agent/sessions`, streaming parse, `--dangling`, `--json`, r
 
 ### F7 `/decisions`
 List decision records on the current trunk (also a panel view).
+
+### F8 `/compress [instructions]`
+- F8.1 User initiation only. Open the panel with `initialView: "range"` after `waitForIdle()`.
+- F8.2 Candidates come only from `contextSlice`. Off-path and structural rows stay visible but unavailable.
+- F8.3 Protect decision records and an incomplete current user turn. Group each assistant tool call with all related results; a boundary cannot split this group.
+- F8.4 `Space` sets start and end, reverse order is normalized, `x` clears, `Enter` confirms, `Esc` returns to tree, and `q` cancels.
+- F8.5 The current model receives the complete selected serialized source without per-message truncation. Reject a request that cannot fit with output reserve.
+- F8.6 The editor is a required human gate. Empty or cancelled review writes nothing.
+- F8.7 Revalidate the source leaf and selected IDs after the panel and after review.
+- F8.8 Apply navigates to the entry before the range with `{summarize:false}`, appends one visible summary-plus-continuation message, then appends one operation marker.
+- F8.9 Existing JSONL lines never change. `/undo` restores `sourceLeafId` and leaves the new entries off-path.
 
 ## 6. Decision Record template — v0.3: added **Assumptions** (completes the facts/decisions/assumptions triple from Forky's merge schema)
 
@@ -191,6 +207,11 @@ As v0.1 (registerCommand/Shortcut, ExtensionCommandContext + waitForIdle, sessio
   "details":{"v":1,"forkEntryId":"…","branchName":"…","siblings":[{"name":"…","reason":"…"}]} }
 { "type":"custom","customType":"ctree/crop",
   "data":{"v":1,"sourceLeafId":"…","stubbed":[{"entryId":"…","tool":"…","estTokens":0,"sha8":"…"}]} }
+{ "type":"custom_message","customType":"ctree/range-tail","display":true,
+  "content":"[range header]\n\n<approved summary>\n\n<unchanged continuation>",
+  "details":{"v":1,"sourceLeafId":"…","anchorId":"…","startEntryId":"…","endEntryId":"…","selectedEntryIds":["…"],"selectedEstTokens":0,"summaryEstTokens":0,"reclaimedEstTokens":0,"summaryModel":"provider/model","sourceSha8":"deadbeef"} }
+{ "type":"custom","customType":"ctree/range-compact",
+  "data":{"v":1,"sourceLeafId":"…","anchorId":"…","startEntryId":"…","endEntryId":"…","selectedEntryIds":["…"],"selectedEstTokens":0,"summaryEstTokens":0,"reclaimedEstTokens":0,"summaryModel":"provider/model","sourceSha8":"deadbeef"} }
 ```
 
 Forest status: dangling = open fork with no close. Unknown versions/types: skip + warn.
@@ -201,12 +222,13 @@ Note (verified 0.79.1): the decision record rides pi's native `custom_message` e
 
 - **Merge/squash & tournament:** as v0.1 §4.1–4.2, with the added discard path (no LLM call) and the F2.5 interop step. Write decision before close markers; batch the appends.
 - **Crop (revised after source verification):** pi's compaction replaces a contiguous **prefix** only (everything before `firstKeptEntryId`) — per-entry filtered history CANNOT ride the compaction mechanism, and no extension API appends `message`-type entries or removes individual ones. v1 design: score → interactive review (pre-marked if `--auto`) → apply = `navigateTree` to the entry *before* the first cropped entry, then append ONE `custom_message` reconstruction block carrying the kept tail content with stub lines (`[cropped: <tool> <primary-arg>, <size>, <sha-8>]`) in place of cropped bodies, plus a `ctree/crop` custom entry recording {sourceLeafId, stubbed[]}. Append-only; originals stay on the abandoned branch, fully recoverable. Trade-off: the reconstructed tail collapses message granularity into one block — acceptable because the common case (Scenario D) crops near-tail giants with little after them, and the crop review screen shows exactly what gets reconstructed. Better long-term path: small upstream PR to pi exposing branch-with-filtered-history (or extension-level message append); revisit at M6. Invariants unchanged: `tool_use`/`tool_result` pairing represented in the stub; latest-per-tool protected; dry-run side-effect-free.
+- **Range compression:** group safe active-context messages → normalize endpoints → serialize only the selected range → check the current model window with output reserve → draft → require editor review → revalidate leaf, IDs, and source hash → navigate to `anchorId` with `summarize:false` → append `ctree/range-tail` → append `ctree/range-compact`. The tail contains a short header, approved summary, and unchanged serialized continuation. It never copies selected source text.
 - **Token estimation:** chars/4, labeled `~`; per-node cached in the panel's view model; gauge denominators from pi's model catalog context-window field.
 - **Tree layout (panel):** indent-based tree (not graph) with collapse state in panel memory; forest mode lazy-loads file headers first, full parse on expand (50MB file must not block the UI thread — stream + incremental render).
 
 ## 6. Invariants & errors
 
-As v0.1 (append-only; waitForIdle; leaf-id recheck; actionable errors; no half-written close states; pitree tolerates truncated/legacy files) plus: panel never blocks pi's agent loop; all panel mutations re-validate tree state on apply (tree may have changed while panel open); standalone panel asserts read-only (test watches for writes).
+As v0.1 (append-only; waitForIdle; leaf-id recheck; actionable errors; no half-written states; pitree tolerates truncated/legacy files) plus: panel never blocks Pi's agent loop; all panel mutations revalidate tree state on apply; standalone panel is read-only. Range compression also revalidates after summary review and writes the visible tail before its marker.
 
 ## 7. Testing
 

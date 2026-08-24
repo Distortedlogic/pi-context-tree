@@ -8,7 +8,7 @@ const ANSI = /\x1b\[[0-9;]*m/g;
 const strip = (s: string) => s.replace(ANSI, "");
 
 describe("extension entry point", () => {
-	it("registers all five commands and the ◆ decision card renderer", () => {
+	it("registers all commands in deterministic order and the ◆ decision card renderer", () => {
 		const w = makeFake();
 		const renderers = new Map<
 			string,
@@ -24,9 +24,7 @@ describe("extension entry point", () => {
 
 		piContextTree(w.pi as unknown as ExtensionAPI);
 
-		for (const name of ["branch", "merge", "crop", "panel", "decisions"]) {
-			expect(w.commands.has(name), `missing /${name}`).toBe(true);
-		}
+		expect([...w.commands.keys()]).toEqual(["branch", "merge", "crop", "compress", "panel", "decisions", "undo"]);
 		const renderer = renderers.get("ctree/decision");
 		expect(renderer).toBeDefined();
 		const component = renderer?.(

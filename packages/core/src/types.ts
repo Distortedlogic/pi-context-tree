@@ -231,6 +231,8 @@ export const CTREE_CLOSE = "ctree/close";
 export const CTREE_DECISION = "ctree/decision";
 export const CTREE_CROP = "ctree/crop";
 export const CTREE_CROP_TAIL = "ctree/crop-tail";
+export const CTREE_RANGE_COMPACT = "ctree/range-compact";
+export const CTREE_RANGE_TAIL = "ctree/range-tail";
 
 export type CtreeCloseStatus = "squashed" | "rejected" | "discarded";
 
@@ -290,6 +292,30 @@ export interface CtreeDecisionDetails {
 	siblings?: { name: string; reason: string }[];
 }
 
+/**
+ * Append-only metadata shared by the ctree/range-compact marker and the
+ * ctree/range-tail custom message. Unknown fields are allowed so a v1 reader
+ * does not reject additive schema changes.
+ */
+export interface CtreeRangeCompactData {
+	v: 1;
+	sourceLeafId: string;
+	anchorId: string;
+	startEntryId: string;
+	endEntryId: string;
+	selectedEntryIds: string[];
+	selectedEstTokens: number;
+	summaryEstTokens: number;
+	reclaimedEstTokens: number;
+	summaryModel: string;
+	/** First eight hexadecimal characters of SHA-256(serialized selected source). */
+	sourceSha8: string;
+	[key: string]: unknown;
+}
+
+/** The visible range-tail message repeats the marker metadata in details. */
+export type CtreeRangeTailDetails = CtreeRangeCompactData;
+
 // ---------------------------------------------------------------------------
 // Type guards
 // ---------------------------------------------------------------------------
@@ -312,6 +338,48 @@ export function isCompactionEntry(e: SessionEntry): e is CompactionEntry {
 
 export function isBranchSummaryEntry(e: SessionEntry): e is BranchSummaryEntry {
 	return e.type === "branch_summary";
+}
+
+/** Recognize the operation marker without rejecting unknown schema versions. */
+export function isCtreeRangeCompactEntry(e: SessionEntry): e is CustomEntry {
+	return isCustomEntry(e) && e.customType === CTREE_RANGE_COMPACT;
+}
+
+/** Recognize the visible range-tail message without rejecting unknown schema versions. */
+export function isCtreeRangeTailEntry(e: SessionEntry): e is CustomMessageEntry {
+	return isCustomMessageEntry(e) && e.customType === CTREE_RANGE_TAIL;
+}
+
+/** Validate the fields required to consume the known v1 range schema. */
+export function isCtreeRangeCompactData(value: unknown): value is CtreeRangeCompactData {
+	if (typeof value !== "object" || value === null) return false;
+	const data = value as Record<string, unknown>;
+	return (
+		data.v === 1 &&
+		typeof data.sourceLeafId === "string" &&
+		typeof data.anchorId === "string" &&
+		typeof data.startEntryId === "string" &&
+		typeof data.endEntryId === "string" &&
+		Array.isArray(data.selectedEntryIds) &&
+		data.selectedEntryIds.every((id) => typeof id === "string") &&
+		typeof data.selectedEstTokens === "number" &&
+		typeof data.summaryEstTokens === "number" &&
+		typeof data.reclaimedEstTokens === "number" &&
+		typeof data.summaryModel === "string" &&
+		typeof data.sourceSha8 === "string"
+	);
+}
+
+/** Known v1 data for a marker; later versions remain preserved on the entry. */
+export function ctreeRangeCompactData(e: SessionEntry): CtreeRangeCompactData | undefined {
+	if (!isCtreeRangeCompactEntry(e)) return undefined;
+	return isCtreeRangeCompactData(e.data) ? e.data : undefined;
+}
+
+/** Known v1 details for a visible tail; later versions remain preserved on the entry. */
+export function ctreeRangeTailDetails(e: SessionEntry): CtreeRangeTailDetails | undefined {
+	if (!isCtreeRangeTailEntry(e)) return undefined;
+	return isCtreeRangeCompactData(e.details) ? e.details : undefined;
 }
 
 export function ctreeForkData(e: SessionEntry): CtreeForkData | undefined {

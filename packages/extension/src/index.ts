@@ -3,7 +3,7 @@
  *   pi -e /path/to/pi-context-tree/packages/extension/src/index.ts
  * or symlink this package into ~/.pi/agent/extensions/ for auto-discovery.
  *
- * Commands: /branch /merge /crop /panel /decisions (+ Ctrl+Q).
+ * Commands: /branch /merge /crop /compress /panel /decisions (+ Ctrl+Q).
  * Pinned against pi 0.79.1 — see pi-context-tree-architecture.md.
  */
 
@@ -17,6 +17,7 @@ import { registerCrop } from "./crop-cmd.ts";
 import { realDraft } from "./draft.ts";
 import { registerMerge } from "./merge.ts";
 import { registerPanel } from "./panel-cmd.ts";
+import { registerRangeCompress } from "./range-compress.ts";
 import { registerUndo } from "./undo.ts";
 
 export default function piContextTree(api: ExtensionAPI): void {
@@ -27,6 +28,7 @@ export default function piContextTree(api: ExtensionAPI): void {
 	registerBranch(pi);
 	registerMerge(pi, deps);
 	registerCrop(pi);
+	registerRangeCompress(pi, deps);
 	registerPanel(pi, deps);
 	registerUndo(pi);
 	registerAmbient(pi);

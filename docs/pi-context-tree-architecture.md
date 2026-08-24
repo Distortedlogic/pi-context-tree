@@ -1,6 +1,6 @@
 # pi-context-tree — Architecture & Implementation Notes
 
-**Companion to:** [pi-context-tree-spec.md](pi-context-tree-spec.md) v0.3 · **Pinned pi:** `@earendil-works/pi-coding-agent@0.79.1` + `@earendil-works/pi-tui@0.79.1`
+**Companion to:** [pi-context-tree-spec.md](pi-context-tree-spec.md) v0.4 · **Pinned pi:** `@earendil-works/pi-coding-agent@0.79.1` + `@earendil-works/pi-tui@0.79.1`
 **Status:** Reviewed source; all API claims below carry file references into the pinned repo.
 
 ---
@@ -44,10 +44,10 @@
 ## 3. Package architecture (confirms TRD §1, now concrete)
 
 ```
-core/        zero pi deps. jsonl streaming parser → EntryNode tree; forest scanner;
-             chars/4 estimator; ctree status derivation (open/dangling/squashed/rejected);
-             crop planner (selection rules, reconstruction-block builder);
-             decision-record template render/parse; ALL view-models (pure data + reducers).
+core/        zero Pi deps. JSONL parser → SessionTree; forest scanner; chars/4 estimator;
+             ctree status derivation; crop planner; range candidate grouping/planning;
+             range source serialization/hash/tail rendering; decision records;
+             ALL panel view-model state and reducers.
 tui/         pi-tui components fed by core view-models:
              TreePanel, CropPanel, MergeSelector, RecordEditorPanel, DecisionList,
              ConsumersTable, GaugeBar, InspectorPanel, ForestPanel.
@@ -117,6 +117,46 @@ No leaf movement: the fork entry itself is the label point; subsequent turns are
 3. Apply: `anchor` = parent of first cropped entry → `ctx.navigateTree(anchor, {summarize:false})` → `pi.sendMessage({customType:"ctree/crop-tail", content: reconstructionBlock, display:true, details})` → `pi.appendEntry("ctree/crop", {v:1, sourceLeafId, stubbed:[…]})`.
 4. `reconstructionBlock` = kept tail verbatim (role-prefixed), cropped bodies replaced by `[cropped: <tool> <arg>, <size>, <sha-8>]`. Old branch keeps originals (G4).
 
+### `/compress [instructions]` — reviewed active-range compaction
+
+1. `ctx.waitForIdle()` and derive the current `sourceLeafId`.
+2. Open `ContextPanel` with `initialView:"range"`. The full tree remains visible, but candidate groups come only from `contextSlice(tree, sourceLeafId)`.
+3. Protect off-path and structural entries, decision records, an incomplete current user turn, and incomplete assistant tool-call groups. An assistant tool call and all related results are one atomic group.
+4. Normalize the two endpoints. `planRange()` finds `anchorId`, selected entries, unchanged continuation, selected token estimate, complete selected serialization, and `sourceSha8`.
+5. `draftRangeSummary(deps.draft, ctx, selectedSerialized, instructions)` uses the current model. It sends the complete selected source without per-entry truncation. It rejects input that cannot fit beside the output reserve.
+6. Open `ctx.ui.editor()` with the draft. Empty or cancelled review stops with no writes.
+7. Recheck `sourceLeafId`, recompute the plan from fresh session state, and compare selected IDs and source hash.
+8. Render one range-tail body: short header → approved summary → unchanged serialized continuation. Selected source text is not copied.
+9. Apply in this exact order:
+   a. `ctx.navigateTree(anchorId, {summarize:false})`;
+   b. `pi.sendMessage({customType:"ctree/range-tail", content, display:true, details}, {triggerTurn:false})`;
+   c. `pi.appendEntry("ctree/range-compact", details)`;
+   d. refresh ambient UI.
+10. `/undo` finds the latest active range marker and navigates to `sourceLeafId` with `summarize:false`. The tail and marker remain off-path.
+
+Persisted v1 schemas (unknown fields are allowed; unknown later versions stay preserved):
+
+```jsonc
+// Visible context message. It contains the approved summary and unchanged continuation.
+{ "type":"custom_message", "customType":"ctree/range-tail", "display":true,
+  "content":"[ctree/range-compact: …]\n\n<approved summary>\n\n<unchanged continuation>",
+  "details":{
+    "v":1, "sourceLeafId":"…", "anchorId":"…", "startEntryId":"…", "endEntryId":"…",
+    "selectedEntryIds":["…"], "selectedEstTokens":1200, "summaryEstTokens":180,
+    "reclaimedEstTokens":1020, "summaryModel":"provider/model", "sourceSha8":"deadbeef"
+  } }
+
+// State-only operation marker. It is appended after the visible message.
+{ "type":"custom", "customType":"ctree/range-compact",
+  "data":{
+    "v":1, "sourceLeafId":"…", "anchorId":"…", "startEntryId":"…", "endEntryId":"…",
+    "selectedEntryIds":["…"], "selectedEstTokens":1200, "summaryEstTokens":180,
+    "reclaimedEstTokens":1020, "summaryModel":"provider/model", "sourceSha8":"deadbeef"
+  } }
+```
+
+This is not Pi `/compact`: `/compress` is user-started, range-selected, reviewed, and recoverable through the old branch. It is not `/crop`: it keeps meaning as a summary instead of deleting exact content. It is not `/merge`: it does not integrate a side branch at a fork.
+
 ### Panel `/panel` + Ctrl+Q
 `ctx.ui.custom((tui, theme, keybindings, done) => new TreePanel(vm, theme, keybindings, done), {overlay:true, overlayOptions:{anchor:"center", width:"100%", height:"100%"}})` — exact full-screen `overlayOptions` are the M2 spike's deliverable. Mutations happen **after** `done(action)` resolves, back in the command handler (overlay returns an action descriptor; handler re-validates tree state then executes via SessionPort) — this respects pi's "mutate from command context" model and the spec's re-validate-on-apply invariant (TRD §6).
 
@@ -140,9 +180,9 @@ No leaf movement: the fork entry itself is the label point; subsequent turns are
 
 | Layer | Harness | What |
 |---|---|---|
-| core | vitest + fixtures | parser (linear/branched/tournament/truncated/legacy/50MB stream), estimator, status derivation, crop planner, **all view-model reducers** (the mockup's flows as table tests) |
+| core | vitest + fixtures | parser, estimator, status derivation, crop planner, range planner and hash/tail invariants, **all view-model reducers** |
 | tui | `VirtualTerminal` (xterm headless, copied harness) | render + key-handling per panel; assert viewport lines |
-| extension | pi **RPC mode** + mock OpenAI endpoint | golden JSONL after `/branch → turns → /merge --squash`, discard, tournament, crop; assert: entry order (decision before close), model restore, no `BranchSummaryEntry` + record double-write |
+| extension | Pi **RPC mode** + mock OpenAI endpoint | squash, discard, tournament, crop, and resumed range-tail sessions; assert append order, byte preservation, model restore, and no unwanted `BranchSummaryEntry` |
 | pitree | vitest + fs watch | forest on fixtures; **zero-write assertion** (open files readonly + fs spy) |
 
 ---

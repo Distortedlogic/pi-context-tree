@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { autoSelect, cropCandidates, planCrop, renderReconstruction, stubLine } from "../src/crop.ts";
+import { planRange, rangeCandidates, renderRangeTail } from "../src/range-compress.ts";
 import { SessionBuilder, filler } from "../src/testkit.ts";
 import { SessionTree } from "../src/tree.ts";
 
@@ -98,5 +99,141 @@ describe("renderReconstruction", () => {
 		expect(
 			stubLine({ entryId: "x", tool: "chrome.snapshot", arg: "tab-audit", estTokens: 19_400, sha8: "a3f8c2d1" }),
 		).toBe("[cropped: chrome.snapshot tab-audit, ~19.4k, a3f8c2d1]");
+	});
+});
+
+function rangeScenario() {
+	const b = new SessionBuilder();
+	b.user("root context");
+	const anchor = b.assistant("anchor before selected range");
+	b.fork("inactive");
+	const offPath = b.user("inactive branch message");
+	b.assistant("inactive branch answer");
+	b.at(anchor);
+	const start = b.user("selected source alpha");
+	const end = b.assistant("selected source omega");
+	const continuation = b.user("continuation question");
+	const leaf = b.assistant("continuation answer");
+	const { entries } = b.build();
+	return {
+		tree: SessionTree.fromEntries(entries),
+		ids: { anchor, offPath, start, end, continuation, leaf },
+	};
+}
+
+describe("range compression planning", () => {
+	it("plans a valid range in source order", () => {
+		const { tree, ids } = rangeScenario();
+		const plan = planRange(tree, ids.leaf, ids.start, ids.end);
+
+		expect(plan.anchorId).toBe(ids.anchor);
+		expect(plan.startEntryId).toBe(ids.start);
+		expect(plan.endEntryId).toBe(ids.end);
+		expect(plan.selectedEntryIds).toEqual([ids.start, ids.end]);
+		expect(plan.selectedEstTokens).toBeGreaterThan(0);
+		expect(plan.selectedSerialized).toContain("selected source alpha");
+		expect(plan.selectedSerialized).toContain("selected source omega");
+	});
+
+	it("normalizes reversed endpoints", () => {
+		const { tree, ids } = rangeScenario();
+		const plan = planRange(tree, ids.leaf, ids.end, ids.start);
+		expect(plan.startEntryId).toBe(ids.start);
+		expect(plan.endEntryId).toBe(ids.end);
+		expect(plan.selectedEntryIds).toEqual([ids.start, ids.end]);
+	});
+
+	it("supports a range that reaches the current leaf", () => {
+		const { tree, ids } = rangeScenario();
+		const plan = planRange(tree, ids.leaf, ids.start, ids.leaf);
+		expect(plan.endEntryId).toBe(ids.leaf);
+		expect(plan.continuationEntryIds).toEqual([]);
+		expect(plan.continuationSerialized).toBe("");
+	});
+
+	it("keeps the post-range continuation in source order", () => {
+		const { tree, ids } = rangeScenario();
+		const plan = planRange(tree, ids.leaf, ids.start, ids.end);
+		expect(plan.continuationEntryIds).toEqual([ids.continuation, ids.leaf]);
+		expect(plan.continuationSerialized.indexOf("continuation question")).toBeLessThan(
+			plan.continuationSerialized.indexOf("continuation answer"),
+		);
+	});
+
+	it("rejects missing and off-path IDs", () => {
+		const { tree, ids } = rangeScenario();
+		expect(() => planRange(tree, ids.leaf, "missing", ids.end)).toThrow(/not found/);
+		expect(() => planRange(tree, ids.leaf, ids.offPath, ids.end)).toThrow(/active context path/);
+	});
+
+	it("protects decision records", () => {
+		const b = new SessionBuilder();
+		b.user("root");
+		b.assistant("anchor");
+		const decision = b.customMessage("ctree/decision", "## Decision: keep this", true, {
+			v: 1,
+			forkEntryId: "fork-1",
+			branchName: "protected",
+		});
+		const leaf = b.assistant("after decision");
+		const tree = SessionTree.fromEntries(b.build().entries);
+
+		expect(rangeCandidates(tree, leaf).find((candidate) => candidate.id === decision)?.protectReason).toBe(
+			"decision record",
+		);
+		expect(() => planRange(tree, leaf, decision, decision)).toThrow(/protected: decision record/);
+	});
+
+	it("protects an incomplete current user turn", () => {
+		const b = new SessionBuilder();
+		b.user("root");
+		b.assistant("anchor");
+		const current = b.user("unfinished request");
+		const tree = SessionTree.fromEntries(b.build().entries);
+		const candidate = rangeCandidates(tree, current).find((item) => item.id === current);
+
+		expect(candidate?.protected).toBe(true);
+		expect(candidate?.protectReason).toBe("incomplete current user turn");
+		expect(() => planRange(tree, current, current, current)).toThrow(/incomplete current user turn/);
+	});
+
+	it("keeps an assistant tool call and its result in one safe group", () => {
+		const b = new SessionBuilder();
+		b.user("root");
+		b.assistant("anchor");
+		const result = b.toolUse("read_file", { path: "src/a.ts" }, "file body");
+		const leaf = b.assistant("tool work complete");
+		const tree = SessionTree.fromEntries(b.build().entries);
+		const call = tree.get(result)?.parentId;
+		expect(call).toBeTruthy();
+		const callId = call as string;
+		const candidate = rangeCandidates(tree, leaf).find((item) => item.id === callId);
+
+		expect(candidate?.entryIds).toEqual([callId, result]);
+		expect(candidate?.selectable).toBe(true);
+		expect(planRange(tree, leaf, callId, result).selectedEntryIds).toEqual([callId, result]);
+		expect(() => planRange(tree, leaf, result, result)).toThrow(/range start.*split/);
+		expect(() => planRange(tree, leaf, callId, callId)).toThrow(/range end.*split/);
+	});
+
+	it("computes a stable selected-source hash", () => {
+		const { tree, ids } = rangeScenario();
+		const first = planRange(tree, ids.leaf, ids.start, ids.end);
+		const second = planRange(tree, ids.leaf, ids.start, ids.end);
+		expect(first.sourceSha8).toMatch(/^[0-9a-f]{8}$/);
+		expect(second.sourceSha8).toBe(first.sourceSha8);
+	});
+
+	it("renders the approved summary and continuation without selected source text", () => {
+		const { tree, ids } = rangeScenario();
+		const plan = planRange(tree, ids.leaf, ids.start, ids.end);
+		const rebuilt = renderRangeTail(plan, "Approved compact summary");
+
+		expect(rebuilt).toContain("Approved compact summary");
+		expect(rebuilt).toContain("continuation question");
+		expect(rebuilt).toContain("continuation answer");
+		expect(rebuilt).not.toContain("selected source alpha");
+		expect(rebuilt).not.toContain("selected source omega");
+		expect(rebuilt.indexOf("continuation question")).toBeLessThan(rebuilt.indexOf("continuation answer"));
 	});
 });

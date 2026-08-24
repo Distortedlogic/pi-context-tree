@@ -159,6 +159,105 @@ describe("ContextPanel crop turn-mode", () => {
 	});
 });
 
+describe("ContextPanel range selection", () => {
+	function rangePanel(maxBody = 26) {
+		const b = new SessionBuilder();
+		const root = b.user("root context");
+		b.assistant("anchor before range");
+		const start = b.user("selected start");
+		const inside = b.assistant("selected inside");
+		const end = b.user("selected end");
+		const leaf = b.assistant("continuation after range");
+		const actions: PanelAction[] = [];
+		const panel = new ContextPanel({
+			input: {
+				entries: b.build().entries,
+				project: "range-project",
+				contextWindow: 200_000,
+				initialView: "range",
+			},
+			maxBody,
+			onAction: (action) => actions.push(action),
+		});
+		return { panel, actions, ids: { root, start, inside, end, leaf } };
+	}
+
+	function selectRange(panel: ContextPanel, startId: string, endId: string): void {
+		const startIndex = panel.viewModel.rows().findIndex((row) => row.id === startId);
+		expect(startIndex).toBeGreaterThanOrEqual(0);
+		while (panel.viewModel.sel < startIndex) panel.handleInput("j");
+		panel.handleInput(" ");
+		const endIndex = panel.viewModel.rows().findIndex((row) => row.id === endId);
+		expect(endIndex).toBeGreaterThanOrEqual(startIndex);
+		while (panel.viewModel.sel < endIndex) panel.handleInput("j");
+		panel.handleInput(" ");
+	}
+
+	it("renders distinct start, end, and inside-range markers", () => {
+		const { panel, ids } = rangePanel();
+		selectRange(panel, ids.start, ids.end);
+		const text = panel.render(100).map(strip).join("\n");
+
+		expect(text).toContain("[S] ● user: selected start");
+		expect(text).toContain("[■] ○ assistant: selected inside");
+		expect(text).toContain("[E] ● user: selected end");
+	});
+
+	it("renders protected rows as unavailable with their reason", () => {
+		const { panel, ids } = rangePanel();
+		const root = panel.viewModel.rows().find((row) => row.id === ids.root);
+		expect(root?.protected).toBe(true);
+		const text = panel.render(120).map(strip).join("\n");
+		expect(text).toContain("[×] ● user: root context (no anchor before this message group)");
+	});
+
+	it("shows the range key contract in the footer", () => {
+		const { panel } = rangePanel();
+		const text = panel.render(100).map(strip).join("\n");
+		expect(text).toContain("Space start/end · x clear · ⏎ confirm · esc normal tree · q close");
+	});
+
+	it("keeps range rows inside narrow terminal widths", () => {
+		const { panel, ids } = rangePanel();
+		selectRange(panel, ids.start, ids.end);
+		for (const width of [24, 32, 40]) {
+			for (const line of panel.render(width)) {
+				expect(strip(line).length).toBeLessThanOrEqual(width);
+			}
+		}
+	});
+
+	it("scrolls across a selected range larger than the visible body", () => {
+		const b = new SessionBuilder();
+		b.user("root");
+		b.assistant("anchor");
+		const ids: string[] = [];
+		for (let i = 0; i < 14; i++) {
+			ids.push(i % 2 === 0 ? b.user(`range row ${i}`) : b.assistant(`range row ${i}`));
+		}
+		const panel = new ContextPanel({
+			input: { entries: b.build().entries, project: "long-range", initialView: "range" },
+			maxBody: 4,
+			onAction: () => {},
+		});
+		const start = ids[2] as string;
+		const end = ids[11] as string;
+		selectRange(panel, start, end);
+		expect(panel.viewModel.rows().filter((row) => row.inRange)).toHaveLength(10);
+
+		const atEnd = panel.render(70).map(strip);
+		expect(atEnd.join("\n")).toContain("[E]");
+		expect(atEnd.length).toBe(12);
+
+		const startIndex = panel.viewModel.rows().findIndex((row) => row.id === start);
+		while (panel.viewModel.sel > startIndex) panel.handleInput("k");
+		const atStart = panel.render(70).map(strip);
+		expect(atStart.join("\n")).toContain("[S]");
+		expect(atStart.join("\n")).toContain("more (");
+		expect(atStart.length).toBe(12);
+	});
+});
+
 describe("ContextPanel consumers bars", () => {
 	it("scales bars relative to the biggest consumer", () => {
 		const { panel } = makePanel();
