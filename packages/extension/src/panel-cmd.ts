@@ -27,6 +27,8 @@ export interface PanelOpenOptions {
 	premark?: string[];
 	dryRun?: boolean;
 	readOnly?: boolean;
+	/** Optional text from `/compress [instructions]`. */
+	compressInstructions?: string;
 }
 
 export function buildPanelInput(pi: PiLike, ctx: CtxLike, opts: PanelOpenOptions = {}): PanelInput {
@@ -43,6 +45,7 @@ export function buildPanelInput(pi: PiLike, ctx: CtxLike, opts: PanelOpenOptions
 		dryRun: opts.dryRun,
 		initialView: opts.initialView,
 		premark: opts.premark,
+		compressInstructions: opts.compressInstructions,
 	};
 }
 
@@ -150,6 +153,13 @@ export async function executePanelAction(
 			await mergeHandler(pi, ctx, "", deps);
 			return;
 		}
+		case "compress-range": {
+			ctx.ui.notify(
+				`compression range selected: ${action.range.groups.length} safe group${action.range.groups.length === 1 ? "" : "s"} · ${action.range.entryIds.length} entries${action.instructions ? ` · instructions: ${action.instructions}` : ""}`,
+				"info",
+			);
+			return;
+		}
 		case "crop-apply": {
 			const { applyCropPlan, cropHandler } = await import("./crop-cmd.ts");
 			if (action.dryRun) {
@@ -173,8 +183,18 @@ async function runPanel(pi: PiLike, ctx: CtxLike, deps: Deps, opts: PanelOpenOpt
 
 export function registerPanel(pi: PiLike, deps: Deps): void {
 	pi.registerCommand("panel", {
-		description: "pi-context-tree: full-screen context panel (tree · crop · consumers · decisions)",
+		description: "pi-context-tree: full-screen context panel (tree · range · crop · consumers · decisions)",
 		handler: (_args, ctx) => runPanel(pi, ctx, deps),
+	});
+	pi.registerCommand("compress", {
+		description: "pi-context-tree: select one active-context range to summarize; optional text adds summary instructions",
+		handler: async (args, ctx) => {
+			const action = await openPanel(pi, ctx, {
+				initialView: "range",
+				compressInstructions: args.trim() || undefined,
+			});
+			await executePanelAction(pi, ctx, action, deps);
+		},
 	});
 	// ctrl+q, not ctrl+t: pi reserves ctrl+t for app.thinking.toggle (it's in
 	// RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS), so a ctrl+t shortcut is

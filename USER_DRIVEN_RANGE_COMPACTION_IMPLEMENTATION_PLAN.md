@@ -24,23 +24,23 @@ Working command name: `/compress [instructions]`.
 
 ### 1. Fix the command and selection contract
 
-- [ ] Confirm `/compress` as the final slash command name.
-- [ ] Define `/compress [instructions]` so optional text becomes extra summary instructions.
-- [ ] Define the TUI keys:
-  - [ ] `Space` on the first valid row sets the range start.
-  - [ ] `Space` on the second valid row sets the range end.
-  - [ ] If the second row is before the first row, normalize the range order.
-  - [ ] `x` clears the current range.
-  - [ ] `Enter` confirms a complete valid range.
-  - [ ] `Esc` returns to the normal tree view.
-  - [ ] `q` closes the panel without a change.
-- [ ] Add `r` in the normal `/panel` tree view to enter range-selection mode.
-- [ ] Restrict selectable entries to the active context path returned by `contextSlice`.
-- [ ] Show off-path, structural, and protected entries, but do not let the user select them.
-- [ ] Protect decision records from range compression.
-- [ ] Protect an incomplete current user turn.
-- [ ] Define safe tool-call grouping so a range cannot leave an assistant tool call without its tool result.
-- [ ] Permit one or more safe message groups in a range.
+- [x] Confirm `/compress` as the final slash command name.
+- [x] Define `/compress [instructions]` so optional text becomes extra summary instructions.
+- [x] Define the TUI keys:
+  - [x] `Space` on the first valid row sets the range start.
+  - [x] `Space` on the second valid row sets the range end.
+  - [x] If the second row is before the first row, normalize the range order.
+  - [x] `x` clears the current range.
+  - [x] `Enter` confirms a complete valid range.
+  - [x] `Esc` returns to the normal tree view.
+  - [x] `q` closes the panel without a change.
+- [x] Add `r` in the normal `/panel` tree view to enter range-selection mode.
+- [x] Restrict selectable entries to the active context path returned by `contextSlice`.
+- [x] Show off-path, structural, and protected entries, but do not let the user select them.
+- [x] Protect decision records from range compression.
+- [x] Protect an incomplete current user turn.
+- [x] Define safe tool-call grouping so a range cannot leave an assistant tool call without its tool result.
+- [x] Permit one or more safe message groups in a range.
 
 ### 2. Add the persisted range-compaction schema
 

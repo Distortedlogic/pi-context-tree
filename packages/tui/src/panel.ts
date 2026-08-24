@@ -119,6 +119,24 @@ export class ContextPanel {
 
 		let left: string;
 		switch (row.kind) {
+			case "range": {
+				const marker = row.rangeStart && row.rangeEnd
+					? t.mark("[S/E]")
+					: row.rangeStart
+						? t.mark("[S]")
+						: row.rangeEnd
+							? t.mark("[E]")
+							: row.inRange
+								? t.mark("[■]")
+								: row.selectable
+									? t.dim("[ ]")
+									: t.dim("[×]");
+				const glyph = row.dim ? t.dim(row.glyph) : row.glyph;
+				const text = row.dim ? t.dim(row.text) : row.text;
+				const reason = row.protectReason ? t.dim(` (${row.protectReason})`) : "";
+				left = `${indent}${marker} ${glyph} ${text}${reason}`;
+				break;
+			}
 			case "fork": {
 				const color = t.presentation[row.presentation ?? "active"];
 				const fold = row.foldable ? (row.folded ? " [+]" : " [-]") : "";
