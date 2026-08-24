@@ -231,27 +231,27 @@ Do not add a new test file.
 
 File: `packages/core/test/crop.test.ts`
 
-- [ ] Test valid range planning.
-- [ ] Test reversed endpoint normalization.
-- [ ] Test a range that reaches the leaf.
-- [ ] Test a range with a continuation.
-- [ ] Test off-path and missing IDs.
-- [ ] Test protected decision records.
-- [ ] Test incomplete current user turns.
-- [ ] Test safe tool-call grouping.
-- [ ] Test selected source hash stability.
-- [ ] Test that rebuilt content contains the summary and continuation but not selected source text.
+- [x] Test valid range planning.
+- [x] Test reversed endpoint normalization.
+- [x] Test a range that reaches the leaf.
+- [x] Test a range with a continuation.
+- [x] Test off-path and missing IDs.
+- [x] Test protected decision records.
+- [x] Test incomplete current user turns.
+- [x] Test safe tool-call grouping.
+- [x] Test selected source hash stability.
+- [x] Test that rebuilt content contains the summary and continuation but not selected source text.
 
 File: `packages/core/test/panel-vm.test.ts`
 
-- [ ] Test entry into range mode from the tree.
-- [ ] Test first and second endpoint selection.
-- [ ] Test complete range highlighting.
-- [ ] Test clear and cancellation keys.
-- [ ] Test invalid endpoint notices.
-- [ ] Test selected token totals.
-- [ ] Test the emitted `range-apply` action.
-- [ ] Test read-only denial.
+- [x] Test entry into range mode from the tree.
+- [x] Test first and second endpoint selection.
+- [x] Test complete range highlighting.
+- [x] Test clear and cancellation keys.
+- [x] Test invalid endpoint notices.
+- [x] Test selected token totals.
+- [x] Test the emitted `range-apply` action.
+- [x] Test read-only denial.
 
 ### 13. Add TUI coverage in the existing suite
 
