@@ -6,7 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **`/compress [instructions]`** — select one continuous safe range from the active context path, draft a summary with the current model, and require editor review before apply.
+- **Panel range mode** — `r` from tree; `Space` start/end; `x` clear; `Enter` confirm; `Esc` tree; `q` close. Protected rows and atomic assistant-tool/result groups prevent unsafe boundaries.
+- **Append-only range persistence** — `ctree/range-tail` stores the approved summary plus unchanged continuation, followed by `ctree/range-compact` metadata. Original JSONL entries stay unchanged.
+- **Range undo and accounting** — `/undo` restores the original source leaf; range summaries have a separate consumer bucket; red-band and `/compact` guidance include `/compress`.
+- **Coverage** — core planner and panel tests, TUI rendering tests, extension apply/undo tests, a resumed real-session scenario, and a real-TUI `/compress` flow.
+
+### Changed
+- The context panel now has a sixth view for range selection. Screenshots and demo assets are unchanged until a new final capture is approved.
 
 ## [0.1.1] — 2026-06-13
 

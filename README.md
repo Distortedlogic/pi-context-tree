@@ -49,7 +49,7 @@ You can already *split* and *navigate* context natively — but the moves that k
 | You want to… | Native pi | pi-context-tree |
 |---|---|---|
 | explore a side-quest, then bring back **only the answer** | `/fork` + `/tree` split and navigate; leaving a branch **auto-summarizes** (lossy, unconfirmed) | `/branch` + `/merge --squash` fold back a **human-confirmed decision record** — the noisy turns stay on the branch, recoverable |
-| reclaim a **bloated tool result** | `/compact` rewrites the *whole* context into a lossy summary you can't undo | `/crop` surgically stubs one fat result (or a whole Q&A turn) — **append-only and recoverable** |
+| reclaim part of the active context | `/compact` rewrites a broad context prefix into an automatic summary | `/compress` replaces one reviewed message range; `/crop` removes one fat result or whole Q&A turn — both are **append-only and recoverable** |
 | **see what's filling** the window and act on it | `/tree` switches branches | `/panel` adds per-node token costs, a top-consumers view, decision cards, and one-key crop/branch/merge |
 
 ## Features
@@ -58,8 +58,9 @@ You can already *split* and *navigate* context natively — but the moves that k
 |---|---|
 | **`/branch <name> [model]`** | Label the current point and fork off — optionally onto a cheaper model for the side-quest. The trunk model is restored on merge. |
 | **`/merge`** | Close a branch — **bare `/merge` squashes** to a human-confirmed ◆ decision record (`--pick` for the mode selector); also **discard** and **tournament** (winner record + epitaphs for the losers). |
+| **`/compress [instructions]`** | Select one continuous range on the active context path, draft a summary with the current model, and review it before it replaces that range. The continuation stays unchanged and the source stays recoverable. |
 | **`/crop`** | Stub fat tool/MCP results, or drop a whole Q&A turn — **append-only**, always recoverable. `--top` crops the biggest result inline; or review in the panel; or headless `--auto --apply`. |
-| **`/undo`** | One-key revert of the last mutation — re-open a squashed/discarded branch, restore a crop, or undo a `/branch`. **Append-only**: nothing is deleted. |
+| **`/undo`** | One-key revert of the last mutation — re-open a squashed/discarded branch, restore a compression or crop, or undo a `/branch`. **Append-only**: nothing is deleted. |
 | **`/panel` (`Ctrl+Q`)** | Full-screen TUI: the tree with per-node token costs, branch status colors, top context consumers, all decision records (`/decisions --export` to markdown), and an entry inspector. |
 | **Ambient health gauge** | A green→red bar above your prompt with a **`▲` trend + jump attribution** — `ctx 38% ▲ +24% (chrome.snapshot)` tells you *what* to crop. Honest while estimating (band + `~est`, never a fake-precise %). Plus a hashed title and a 40% nudge. |
 | **`pitree`** | A standalone, **read-only** forest CLI across all your pi projects, with dangling-branch detection. |
@@ -140,7 +141,10 @@ pi install npm:pi-context-tree
 # 4. see and prune what's in context any time
 /panel            # browse the tree;  /crop --top to stub the biggest tool dump
 
-# changed your mind? one-key, append-only revert of the last branch/merge/crop
+# summarize one older range but keep everything after it unchanged
+/compress preserve exact commands and validation results
+
+# changed your mind? one-key, append-only revert of the last branch/merge/crop/compress
 /undo
 ```
 
@@ -168,6 +172,29 @@ Closes the nearest open branch at or above the leaf. **Bare `/merge` squashes** 
 
 Merging never triggers pi's lossy summarize-on-leave — you never end up with both a summary and a decision record.
 
+### `/compress [instructions]`
+
+Opens the full session tree in range-selection mode. Only entries in the current `contextSlice` are selectable. Off-path history and structural entries stay visible but unavailable. Decision records, an incomplete current user turn, and incomplete tool-call groups are protected.
+
+Tool calls are atomic groups: an assistant tool call and all related tool results move into the range together. A boundary cannot split that group. Select one or more safe groups:
+
+- `Space` sets the start, then the end. A reversed pair is normalized.
+- `x` clears the range.
+- `Enter` confirms a complete valid range.
+- `Esc` returns to the normal tree view. `q` closes without a change.
+- From the normal `/panel` tree, press `r` to enter range mode.
+
+The current model sees only the selected serialized source. Optional command text becomes extra summary instructions. The draft then opens in the editor. Saving a non-empty review is required. Cancel or save an empty value to write nothing.
+
+Apply writes a visible `ctree/range-tail` message with the approved summary and the unchanged continuation, then a `ctree/range-compact` marker. It navigates with `summarize:false`; Pi's summarize-on-leave flow is not used. Original JSONL entries stay unchanged on the previous branch, and `/undo` restores the original source leaf.
+
+| Command | Use it for |
+|---|---|
+| `/compress` | A reviewed summary of one continuous active-context range. |
+| `/crop` | Exact removal of large tool output or a whole Q&A turn. |
+| `/merge` | A reviewed decision record that brings a branch conclusion back to its fork. |
+| Pi `/compact` | Pi's automatic broad-prefix compaction. It is not range-selected or append-only recovery managed by this extension. |
+
 ### `/crop [--top] [--auto] [--apply] [--dry-run] [--min-tokens N] [--older-than N] [--keep glob]`
 
 Surgically stubs out fat tool/MCP results. Interactive by default: opens the panel's crop view with rule-based pre-marking when `--auto` is given. `--auto --apply` skips the panel entirely (scriptable; the only mode available where pi has no TUI). `--dry-run` always wins — it reports and writes nothing.
@@ -189,23 +216,24 @@ One-key revert of the last pi-context-tree mutation — **append-only, nothing i
 
 - after a **squash / discard** → re-opens the branch at its tip (the decision record stays in history, off-path);
 - after a **crop** → restores the original fat result or Q&A turn;
+- after a **range compression** → restores the original `sourceLeafId`; the reviewed summary stays off-path;
 - after a **`/branch`** → drops back to where you branched.
 
-It reverts the last *active* mutation (the most recent still on your path) — run it again to peel back further. This is the safety net that makes cropping and merging feel reversible.
+It reverts the last *active* mutation (the most recent still on your path) — run it again to peel back further. This is the safety net for merging, compressing, and cropping.
 
 ### `/panel` (also `Ctrl+Q`) and `/decisions [--export path]`
 
-The full-screen context panel (an overlay over pi). `/decisions` opens it straight on the decisions view (and prints a text listing where no TUI is available, e.g. RPC mode); **`/decisions --export [path]`** writes every trunk record to portable markdown (default `ctree-decisions.md`) to paste into a PR / ADR / Slack. The panel stays up across actions: pick a mutation (jump/branch/merge/crop-apply), it executes in command context after re-validating the session, and the panel reopens with fresh state until you close it. `Ctrl+Q` opens view-only in 0.79.1 (shortcuts get no command context and pi has no command-invoke API) — use `/panel` for mutations.
+The full-screen context panel (an overlay over Pi). `/decisions` opens it on the decisions view; **`/decisions --export [path]`** writes trunk records to markdown. The panel stays open across actions: jump, branch, merge, range apply, or crop apply runs in command context after session revalidation, then the panel opens again with fresh state. `Ctrl+Q` stays view-only when Pi does not provide command context; use `/panel` for mutations.
 
 ## The context panel
 
-A full-screen overlay with five keyboard-driven views — **tree** (every entry with its token cost and branch status), **consumers** (what's eating the window), **decisions** (◆ records as cards), **crop**, and **inspect**. You act from where you see the problem: `b` branch, `m` merge, `c` crop, `⏎` jump/fold. The screenshot above is the tree view.
+A full-screen overlay with six keyboard-driven views — **tree** (every entry with its token cost and branch status), **range** (safe continuous selection for `/compress`), **consumers** (what is using the window), **decisions** (◆ records as cards), **crop**, and **inspect**. You act from where you see the problem: `b` branch, `m` merge, `c` crop, `r` select a compression range, and `⏎` jump/fold. The screenshot above is the tree view.
 
 > **Full keymap, glyph legend, and reading guide → [USAGE §5 — The context panel](docs/USAGE.md#5-the-context-panel--keys).**
 
 ### Ambient UI (outside the panel)
 
-A **context-health gauge bar pinned above the prompt** (`CONTEXT ▓▓░ … N% band`, green→red, band ticks at 5/15/40%). It carries a **`▲` trend** when context is filling fast and **attributes jumps** — `ctx 38% ▲ +24% (chrome.snapshot)` names *what* just bloated the window, right where you'll see it. While pi is still estimating (right after a session loads) it stays honest: the band word + a coarse `~est`, never a fake-precise percent. Plus a footer status `⎇ branch · ctx N% band`, a terminal title color-hashed per branch, a one-time nudge when context crosses 40%, and a philosophy warning on `/compact`.
+A **context-health gauge bar pinned above the prompt** (`CONTEXT ▓▓░ … N% band`, green→red, band ticks at 5/15/40%). It carries a **`▲` trend** when context is filling fast and **attributes jumps** — `ctx 38% ▲ +24% (chrome.snapshot)` names *what* just bloated the window. While Pi is still estimating, it shows the band word and a coarse `~est`, never a fake-precise percent. The red-band nudge and the `/compact` warning include `/compress` as the reviewed range-summary option.
 
 ### `pitree` — the standalone forest CLI
 
@@ -218,7 +246,7 @@ Flags dangling branches (open forks with no close marker) across every project. 
 
 ## How it works
 
-- **Append-only, always.** Every mutation (`/merge`, `/crop`) writes new `ctree/*` entries; existing session JSONL lines are never edited or deleted, so originals are recoverable forever.
+- **Append-only, always.** Every mutation (`/merge`, `/crop`, `/compress`) writes new `ctree/*` entries; existing session JSONL lines are never edited or deleted, so originals are recoverable forever.
 - **Human-confirmed merges.** The only summarization is branch→decision-record, and it always passes through your editor before entering the trunk. `/merge` integrates with (never fights) pi's native summarize-on-leave and never double-writes a summary and a decision record.
 - **Layered, pi-light core.** `core` imports nothing of pi (pure parsing/tree/estimation/planning); `tui` builds the panel on pi-tui; only the `extension` adapter touches pi's API. See [the architecture doc](docs/pi-context-tree-architecture.md) for the verified pi APIs (with file:line references) and the load-bearing design decisions.
 
@@ -230,9 +258,9 @@ Flags dangling branches (open forks with no close marker) across every project. 
 
 **The gauge says "est" or shows a `~`.** pi reports zero context usage right after a session loads, so until your first fresh turn the gauge shows the band word + a coarse `~Nk est` (no fake-precise percent on a guess); it switches to pi's exact number once a turn lands.
 
-**Where did `/undo` put me?** `/undo` re-opens the last branch/crop by navigating your leaf back to where the mutation started — nothing is deleted. After undoing a squash you're back *on the branch* (the decision record is still in history, just off your current path); type and keep working, or `/undo` again to peel back the previous mutation.
+**Where did `/undo` put me?** `/undo` returns to the source recorded by the latest active branch, merge, crop, or range-compression marker. Nothing is deleted. A decision, crop tail, or range summary remains in off-path history.
 
-**Does this ever rewrite or delete my session?** No — every change is append-only. `/merge` and `/crop` add new entries and the originals stay recoverable on the previous branch, verified by byte-for-byte golden tests against real pi.
+**Does this ever rewrite or delete my session?** No. `/merge`, `/crop`, and `/compress` append new entries. The originals stay recoverable on the previous branch, with byte-preservation coverage against real Pi sessions.
 
 **How do I pin a version?** `pi install npm:pi-context-tree@0.1.0` installs a specific release from npm (or `git:…@v0.1.0` from GitHub). The bare `npm:` / `git:` forms track the latest published release / the default branch and update whenever you reinstall.
 
@@ -245,7 +273,7 @@ npm run check       # tsc --noEmit ×4 packages + biome
 npm run fixtures    # regenerate committed fixtures (deterministic, byte-identical)
 ```
 
-**Layout:** `core` (parser, tree, estimator, crop planner, panel view-model — zero pi deps) · `tui` (ContextPanel on pi-tui) · `extension` (the pi-facing surface, loaded from source via jiti) · `pitree` (standalone CLI/panel).
+**Layout:** `core` (parser, tree, estimator, crop and range planners, panel view-model — zero Pi deps) · `tui` (ContextPanel on pi-tui) · `extension` (the Pi-facing surface, loaded from source via jiti) · `pitree` (standalone CLI/panel).
 
 **Testing.** TDD throughout; `packages/core/src/testkit.ts` exports the deterministic `SessionBuilder` used by tests and fixtures. **Golden integration tests** (`packages/extension/test/golden/`) run the real pinned pi in `--mode rpc` against a mock OpenAI endpoint and pin the resulting session JSONL byte-for-byte. A **real-TUI test** boots pi in a pseudo-terminal via `expect(1)` and walks the panel keymap. Both self-skip when `pi`/`expect` are missing; re-record intended golden changes with `UPDATE_GOLDENS=1 npm test -w @pi-context-tree/extension`.
 
@@ -262,7 +290,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full conventions and the dev loop
 ## Documentation
 
 - [**USAGE.md**](docs/USAGE.md) — hands-on guide (install, the core loop, commands by example, panel keys, recipes). **Start here.**
-- [pi-context-tree-spec.md](docs/pi-context-tree-spec.md) — PRD/TRD v0.3 + the evidence/positioning section.
+- [pi-context-tree-spec.md](docs/pi-context-tree-spec.md) — PRD/TRD v0.4 + the evidence/positioning section.
 - [pi-context-tree-architecture.md](docs/pi-context-tree-architecture.md) — verified pi APIs (file:line) + design decisions.
 - [pi-context-tree-mockup.html](docs/pi-context-tree-mockup.html) — interactive TUI mockup (open in a browser).
 

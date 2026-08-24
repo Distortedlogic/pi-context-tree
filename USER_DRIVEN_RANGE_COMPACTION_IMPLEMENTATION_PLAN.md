@@ -320,15 +320,15 @@ Files:
 - `docs/pi-context-tree-architecture.md`
 - `CHANGELOG.md`
 
-- [ ] Document `/compress [instructions]`.
-- [ ] Document all range-selection keys.
-- [ ] Explain that only the active context path is selectable.
-- [ ] Explain protected entries and safe tool-call groups.
-- [ ] Explain the required summary review gate.
-- [ ] Explain append-only recovery and `/undo`.
-- [ ] Explain the difference between `/compress`, `/crop`, `/merge`, and Pi's `/compact`.
-- [ ] Add the new custom entry schemas and write order to the architecture document.
-- [ ] Update panel screenshots or demo assets only after the final UI is stable.
+- [x] Document `/compress [instructions]`.
+- [x] Document all range-selection keys.
+- [x] Explain that only the active context path is selectable.
+- [x] Explain protected entries and safe tool-call groups.
+- [x] Explain the required summary review gate.
+- [x] Explain append-only recovery and `/undo`.
+- [x] Explain the difference between `/compress`, `/crop`, `/merge`, and Pi's `/compact`.
+- [x] Add the new custom entry schemas and write order to the architecture document.
+- [x] Update panel screenshots or demo assets only after the final UI is stable. (No asset change in this batch.)
 
 ### 17. Run all verification
 

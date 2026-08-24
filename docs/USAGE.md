@@ -15,7 +15,7 @@ pi remove git:github.com/navbytes/pi-context-tree   # if already installed
 pi -e /path/to/pi-context-tree
 ```
 
-You'll know it's loaded when you see a **`CONTEXT …%` gauge bar above your prompt** and `⎇ trunk · ctx N%` in the footer. Commands available: `/branch` `/merge` `/crop` `/undo` `/panel` `/decisions` (and `Ctrl+Q`).
+You'll know it is loaded when you see a **`CONTEXT …%` gauge bar above your prompt** and `⎇ trunk · ctx N%` in the footer. Commands available: `/branch` `/merge` `/compress` `/crop` `/undo` `/panel` `/decisions` (and `Ctrl+Q`).
 
 ## 2. The idea in 30 seconds
 
@@ -24,7 +24,8 @@ Treat your pi session like a **git repo**: context entries are commits, the main
 - Keep the trunk **small, fresh, relevant** (5–15% of the window).
 - Explore on a **branch**; fold only the *conclusion* back as a **decision record** — the noisy turns stay behind.
 - Never `/compact` (it replaces source material with a lossy summary).
-- When a single tool result or a whole exchange bloats context, **crop** it (the original stays recoverable).
+- When a continuous older range is useful but too large, **compress** it into a reviewed summary.
+- When a single tool result or a whole exchange is not useful, **crop** it (the original stays recoverable).
 
 The ambient signals keep you honest: the gauge bar goes **green → orange → red** as context fills.
 
@@ -92,6 +93,39 @@ Bare `/merge` squashes — the 99% path. Use `--pick` for the mode menu, or pass
 ```
 The editor is a hard gate — **nothing lands until you save**. Merging never triggers pi's summarize-on-leave.
 
+### `/compress [instructions]` — reviewed range summary
+
+```
+/compress
+/compress preserve exact commands, file paths, and failed validation
+```
+
+The command opens the full tree in range mode. Only the active `contextSlice` path is selectable. Off-path and structural rows remain visible, but they show as unavailable. Decision records are protected. An incomplete current user turn is protected. An incomplete assistant tool-call group is also protected.
+
+An assistant tool call and all related tool results form one safe group. A range boundary cannot split that group. The range can contain one or more safe groups.
+
+Keys:
+
+- `Space` sets the first endpoint and then the second endpoint. Reverse order is normalized.
+- `x` clears both endpoints.
+- `Enter` confirms a complete valid range.
+- `Esc` returns to the normal tree view.
+- `q` closes the panel and writes nothing.
+- In the normal `/panel` tree view, `r` enters range mode.
+
+After selection, the current model receives only the selected serialized source. Optional command text is added as summary instructions. The draft opens in the editor and requires review. Saving an empty value or cancelling writes nothing.
+
+Apply keeps all context after the selected range. It writes the approved summary and unchanged continuation as a visible range-tail message, then writes a range marker. Existing JSONL lines are not changed. `/undo` returns to the original source leaf; the summary and marker remain in off-path history.
+
+Choose the command by intent:
+
+| Command | Purpose |
+|---|---|
+| `/compress` | Replace one continuous active-context range with a reviewed summary. |
+| `/crop` | Remove exact large results or a complete Q&A turn. |
+| `/merge` | Bring a branch conclusion back as a reviewed decision record. |
+| Pi `/compact` | Let Pi summarize a broad context prefix automatically. |
+
 ### `/crop …` — two granularities
 Stub a fat tool result, or remove a whole Q&A turn. Both branch at an anchor and leave the originals recoverable.
 
@@ -111,7 +145,7 @@ Stub a fat tool result, or remove a whole Q&A turn. Both branch at an anchor and
 ```
 /undo                                  # revert the last branch / merge / crop — append-only, nothing deleted
 ```
-`/undo` navigates your leaf back to where the last mutation started: a squash/discard **re-opens the branch**, a crop **restores the original**, a `/branch` **drops back to where you branched**. A confirm names what reverts. It undoes the last *active* mutation; run it again to peel back further. (After undoing a squash you're back on the branch — the decision record stays in history, just off your current path.)
+`/undo` navigates to the source of the last active mutation: a squash or discard reopens the branch, a crop restores the original result or turn, a range compression restores its original `sourceLeafId`, and `/branch` returns to its parent. A confirmation names the action. New decision, crop, and range entries remain in off-path history.
 
 ### `/panel` · `/decisions [--export path]` · `Ctrl+Q`
 `/panel` opens the full-screen context panel; `/decisions` opens it on the decisions view (and prints a text list when there's no TUI). `/decisions --export [path]` writes every trunk record to portable markdown (default `ctree-decisions.md`) — paste into a PR / ADR / Slack. The panel stays up across actions and reopens with fresh state until you close it. `Ctrl+Q` opens it **view-only** (a pi limitation — shortcuts get no command context) — use `/panel` to mutate.
@@ -122,7 +156,8 @@ All views: `↑↓` / `j k` move · `g`/`G` top/bottom · `q` close · `esc` bac
 
 | View | What it shows · keys |
 |---|---|
-| **tree** | every entry with token cost; fork status colors; `← you are here`, `◀ leaf`, `⚠` on ≥10k entries. <br>`⏎` jump/fold · `b` branch from entry · `m` merge · `c` crop · `i` inspect · `D` decisions · `u` consumers |
+| **tree** | every entry with token cost; fork status colors; `← you are here`, `◀ leaf`, `⚠` on ≥10k entries. <br>`⏎` jump/fold · `b` branch from entry · `m` merge · `c` crop · `r` range compress · `i` inspect · `D` decisions · `u` consumers |
+| **range** | `Space` start/end · `x` clear · `⏎` confirm · `Esc` normal tree · `q` close; `[S]` start · `[E]` end · `[■]` inside · `[×]` unavailable |
 | **crop** | `space` mark · `a` auto · `⏎` apply · **`t` toggle result ⇄ turn mode** · in turn mode `space` marks a whole Q&A turn |
 | **consumers** | tokens by source, bars scaled to the biggest. `c` jump to crop |
 | **decisions** | ◆ records as cards (date · model · human-confirmed ✓ · outcome · ✗ epitaphs). `⏎` jump to the record |
@@ -137,13 +172,13 @@ Reading the tree: `●` user · `○` assistant · `⚙` tool/MCP · `◆` decis
 - **Footer status** — `⎇ branch · ctx N% band`.
 - **Terminal title** — `project (branch) (pi)`, color hashed from the branch name.
 - **Red nudge** — a one-time gentle warning when context crosses 40%, suggesting `/branch`, `/merge`, or `/crop`.
-- **`/compact` warning** — if you invoke pi's `/compact`, a one-time note explains why this tool prefers branch/merge/crop (it never blocks you).
+- **`/compact` warning** — if you invoke Pi's `/compact`, a one-time note explains the reviewed `/merge`, `/compress`, and `/crop` alternatives (it never blocks you).
 
 **Honest while warming up:** pi reports zero usage right after a session loads, so until the first fresh turn the gauge shows the band word + a coarse `~Nk est` rather than a fake-precise percent — it switches to pi's exact number once a turn lands.
 
-## 7. Recovering cropped or dropped content
+## 7. Recovering compressed, cropped, or dropped content
 
-Nothing is ever destroyed. A crop or turn-removal **branches at an anchor** and writes a reconstruction block; the originals stay on the **previous branch**. The quickest way back is **`/undo`** — it re-opens/restores the last mutation in one keystroke. Or do it by hand: open `/panel`, find the pre-crop fork in the tree, and `⏎` to jump back to it — the full original content is there. The `sha8` in each `[cropped: …]` / `[dropped turn — …]` marker is the recovery handle.
+Nothing is ever destroyed. A range compression, crop, or turn removal branches at an anchor; the originals stay on the previous branch. The quickest way back is **`/undo`**. For `/compress`, undo restores the recorded `sourceLeafId`; the reviewed summary and marker stay in off-path history. For crop operations, the `sha8` in each `[cropped: …]` or `[dropped turn — …]` marker is the recovery handle. You can also open `/panel` and jump to the original branch.
 
 ## 8. Forest — across all your projects
 
@@ -169,5 +204,5 @@ pitree ui              # pick a session → open the panel read-only (never writ
 
 - **`/export`** — pi's own HTML/share export.
 - **`/reset`** — pi's own context reset.
-- **`/compact`** — pi's compaction (this tool warns against it but never blocks it).
+- **`/compact`** — Pi's broad automatic prefix compaction. Use `/compress` when you need a user-selected range and a required review gate. The extension warns but never blocks Pi's command.
 - The **input-box border color** for bash/thinking mode is pi's; this tool's health signal is the gauge bar above the prompt instead.
