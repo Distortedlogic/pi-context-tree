@@ -103,9 +103,7 @@ function makeCandidate(
 		isMessageEntry(first) && first.message.role === "assistant"
 			? first.message.content.filter((block) => block.type === "toolCall").length
 			: 0;
-	const resultCount = entries.filter(
-		(entry) => isMessageEntry(entry) && entry.message.role === "toolResult",
-	).length;
+	const resultCount = entries.filter((entry) => isMessageEntry(entry) && entry.message.role === "toolResult").length;
 	const groupSuffix =
 		toolCount > 0
 			? ` · ${toolCount} call${toolCount === 1 ? "" : "s"} + ${resultCount} result${resultCount === 1 ? "" : "s"}`
@@ -181,15 +179,13 @@ export function rangeCandidates(tree: SessionTree, sourceLeafId: string): RangeC
 		let protectReason: string | undefined;
 		if (!entry.parentId) protectReason = "no anchor before this message group";
 		else if (entry.id === incompleteUserId) protectReason = "incomplete current user turn";
-		else if (isCustomMessageEntry(entry) && entry.customType === CTREE_DECISION)
-			protectReason = "decision record";
+		else if (isCustomMessageEntry(entry) && entry.customType === CTREE_DECISION) protectReason = "decision record";
 		else if (isMessageEntry(entry) && entry.message.role === "custom" && entry.message.customType === CTREE_DECISION)
 			protectReason = "decision record";
 		else if (
 			entry.type === "branch_summary" ||
 			entry.type === "compaction" ||
-			(isMessageEntry(entry) &&
-				(entry.message.role === "branchSummary" || entry.message.role === "compactionSummary"))
+			(isMessageEntry(entry) && (entry.message.role === "branchSummary" || entry.message.role === "compactionSummary"))
 		)
 			protectReason = "structural context entry";
 		else if (isMessageEntry(entry) && entry.message.role === "toolResult")
@@ -219,8 +215,7 @@ export function planRange(tree: SessionTree, sourceLeafId: string, startId: stri
 	const normalizedStartPosition = Math.min(startPosition, endPosition);
 	const normalizedEndPosition = Math.max(startPosition, endPosition);
 	const firstGroup = candidates.find(
-		(candidate) =>
-			candidate.pathIndex <= normalizedStartPosition && candidate.endPathIndex >= normalizedStartPosition,
+		(candidate) => candidate.pathIndex <= normalizedStartPosition && candidate.endPathIndex >= normalizedStartPosition,
 	);
 	const lastGroup = candidates.find(
 		(candidate) => candidate.pathIndex <= normalizedEndPosition && candidate.endPathIndex >= normalizedEndPosition,
@@ -270,10 +265,9 @@ export function planRange(tree: SessionTree, sourceLeafId: string, startId: stri
 export function renderRangeTail(plan: RangePlan, approvedSummary: string): string {
 	const summary = approvedSummary.trim();
 	if (!summary) throw new Error("approved range summary is empty");
-	const header =
-		`[ctree/range-compact: summarized ${plan.selectedEntryIds.length} entries, ~${fmtTokens(
-			plan.selectedEstTokens,
-		)} tokens, source ${plan.sourceSha8}. Originals preserved at leaf ${plan.sourceLeafId}.]`;
+	const header = `[ctree/range-compact: summarized ${plan.selectedEntryIds.length} entries, ~${fmtTokens(
+		plan.selectedEstTokens,
+	)} tokens, source ${plan.sourceSha8}. Originals preserved at leaf ${plan.sourceLeafId}.]`;
 	const parts = [header, summary];
 	if (plan.continuationSerialized.trim()) {
 		parts.push("[unchanged continuation after compressed range]", plan.continuationSerialized);

@@ -122,8 +122,6 @@ describe("refreshAmbient", () => {
 
 		handlers.get("session_before_compact")?.({}, w.ctx);
 
-		expect(w.ui.notesOf("warning").some((note) => note.includes("/compact") && note.includes("/compress"))).toBe(
-			true,
-		);
+		expect(w.ui.notesOf("warning").some((note) => note.includes("/compact") && note.includes("/compress"))).toBe(true);
 	});
 });

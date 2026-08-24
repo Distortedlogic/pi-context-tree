@@ -103,12 +103,17 @@ describe("panel range actions", () => {
 		w.session.user("new leaf after panel selection");
 		let drafted = false;
 
-		await executePanelAction(w.pi, w.ctx, { type: "range-apply", plan }, {
-			draft: async () => {
-				drafted = true;
-				return "must not run";
+		await executePanelAction(
+			w.pi,
+			w.ctx,
+			{ type: "range-apply", plan },
+			{
+				draft: async () => {
+					drafted = true;
+					return "must not run";
+				},
 			},
-		});
+		);
 
 		expect(drafted).toBe(false);
 		expect(w.calls.navigate).toHaveLength(0);

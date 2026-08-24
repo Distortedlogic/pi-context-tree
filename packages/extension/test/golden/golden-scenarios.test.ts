@@ -354,9 +354,7 @@ describe.skipIf(!PI)("rpc goldens", () => {
 			expect(resumedBody).not.toContain("inside range start");
 			expect(resumedBody).not.toContain("inside range end");
 			expect(ofType(entries, "branch_summary")).toHaveLength(0);
-			expect(
-				mock.requests.filter((request) => request.hasTools).map((request) => request.model),
-			).toEqual(["trunk-1"]);
+			expect(mock.requests.filter((request) => request.hasTools).map((request) => request.model)).toEqual(["trunk-1"]);
 			expect(mock.unexpected).toHaveLength(0);
 		},
 	);

@@ -94,9 +94,7 @@ function assertRangeSummaryFits(ctx: CmdCtxLike, userPrompt: string): void {
 			`cannot check the selected range size because ${modelRef} does not report a context window; select a smaller range or choose a model with context metadata`,
 		);
 	}
-	const inputTokens = Math.ceil(
-		(RANGE_COMPRESSION_SYSTEM_PROMPT.length + userPrompt.length) / CHARS_PER_TOKEN,
-	);
+	const inputTokens = Math.ceil((RANGE_COMPRESSION_SYSTEM_PROMPT.length + userPrompt.length) / CHARS_PER_TOKEN);
 	const requiredTokens = inputTokens + RANGE_SUMMARY_OUTPUT_RESERVE_TOKENS;
 	if (requiredTokens > contextWindow) {
 		throw new Error(

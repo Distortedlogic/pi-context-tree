@@ -332,18 +332,18 @@ Files:
 
 ### 17. Run all verification
 
-- [ ] Run `npm run check`.
-- [ ] Run `npm test`.
-- [ ] Run the existing real-TUI tests when `pi` and `expect` are available.
-- [ ] Load the extension from the source tree with `pi -e .`.
-- [ ] Test `/compress` on a short linear session.
-- [ ] Test `/compress` on a session with tool calls.
-- [ ] Test `/compress` on a branched session.
-- [ ] Test a range with later messages that must remain in context.
-- [ ] Test cancellation at range selection, summary drafting failure, editor review, and navigation.
-- [ ] Test `/undo` after range compression.
-- [ ] Test resume after range compression.
-- [ ] Confirm that the worktree contains no generated or unrelated files.
+- [x] Run `npm run check`.
+- [x] Run `npm test`.
+- [x] Run the existing real-TUI tests when `pi` and `expect` are available. (`pi` is available; `expect` is not installed, so Vitest skipped these tests.)
+- [x] Load the extension from the source tree with `pi -e .`.
+- [x] Test `/compress` on a short linear session.
+- [x] Test `/compress` on a session with tool calls.
+- [x] Test `/compress` on a branched session.
+- [x] Test a range with later messages that must remain in context.
+- [x] Test cancellation at range selection, summary drafting failure, editor review, and navigation.
+- [x] Test `/undo` after range compression.
+- [x] Test resume after range compression.
+- [x] Confirm that the worktree contains no generated or unrelated files.
 
 ### 18. Prepare the upstream change
 

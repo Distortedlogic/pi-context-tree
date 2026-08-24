@@ -399,7 +399,10 @@ describe("PanelVm range selection", () => {
 		while (p.rows()[p.sel]?.id !== ids.end) p.handleKey("j");
 		p.handleKey("space");
 
-		const selected = p.rows().filter((row) => row.inRange).map((row) => row.id);
+		const selected = p
+			.rows()
+			.filter((row) => row.inRange)
+			.map((row) => row.id);
 		expect(selected).toEqual([ids.start, ids.middle, ids.end]);
 		expect(p.rows().find((row) => row.id === ids.leaf)?.inRange).toBe(false);
 	});

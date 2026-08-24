@@ -16,17 +16,12 @@ import {
 	planCrop,
 	planRemoveTurns,
 } from "../crop.ts";
-import { type RangeCandidate, type RangePlan, planRange, rangeCandidates } from "../range-compress.ts";
 import { type ForkInfo, type ForkPresentation, decisionsOnPath, extractForks, nearestOpenFork } from "../ctree.ts";
 import { type Band, band, estimateContextTokens, estimateEntryTokens, fmtTokens } from "../estimate.ts";
+import { type RangeCandidate, type RangePlan, planRange, rangeCandidates } from "../range-compress.ts";
 import { serializeEntry, textOfContent } from "../serialize.ts";
 import { SessionTree, contextSlice } from "../tree.ts";
-import type {
-	CtreeCropData,
-	CtreeDecisionDetails,
-	SessionEntry,
-	UserContent,
-} from "../types.ts";
+import type { CtreeCropData, CtreeDecisionDetails, SessionEntry, UserContent } from "../types.ts";
 import {
 	CTREE_CLOSE,
 	CTREE_CROP,
@@ -35,9 +30,9 @@ import {
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
 	ctreeCloseData,
+	ctreeForkData,
 	ctreeRangeCompactData,
 	ctreeRangeTailDetails,
-	ctreeForkData,
 	isCustomMessageEntry,
 	isMessageEntry,
 } from "../types.ts";
@@ -194,7 +189,7 @@ export class PanelVm {
 
 	rows(): PanelRow[] {
 		switch (this.view) {
-				case "tree":
+			case "tree":
 				return this.treeRows();
 			case "range":
 				return this.rangeRows();

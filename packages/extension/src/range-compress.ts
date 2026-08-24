@@ -59,12 +59,7 @@ export async function applyRangeCompressionPlan(
 
 	let plan: RangePlan;
 	try {
-		plan = planRange(
-			freshState.tree,
-			initialPlan.sourceLeafId,
-			initialPlan.startEntryId,
-			initialPlan.endEntryId,
-		);
+		plan = planRange(freshState.tree, initialPlan.sourceLeafId, initialPlan.startEntryId, initialPlan.endEntryId);
 	} catch (error) {
 		ctx.ui.notify(`selected range is no longer valid: ${(error as Error).message} (nothing written)`, "warning");
 		return;
@@ -122,12 +117,7 @@ export async function applyRangeCompressionPlan(
 	);
 }
 
-export async function rangeCompressHandler(
-	pi: PiLike,
-	ctx: CmdCtxLike,
-	args: string,
-	deps: Deps,
-): Promise<void> {
+export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: string, deps: Deps): Promise<void> {
 	const instructions = args.trim() || undefined;
 	await ctx.waitForIdle();
 	const state = deriveState(ctx);
