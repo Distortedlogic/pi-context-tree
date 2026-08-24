@@ -16,18 +16,27 @@ import {
 	planCrop,
 	planRemoveTurns,
 } from "../crop.ts";
-import { type RangeCandidate, rangeCandidates } from "../range-compress.ts";
+import { type RangeCandidate, type RangePlan, planRange, rangeCandidates } from "../range-compress.ts";
 import { type ForkInfo, type ForkPresentation, decisionsOnPath, extractForks, nearestOpenFork } from "../ctree.ts";
 import { type Band, band, estimateContextTokens, estimateEntryTokens, fmtTokens } from "../estimate.ts";
 import { serializeEntry, textOfContent } from "../serialize.ts";
 import { SessionTree, contextSlice } from "../tree.ts";
-import type { CtreeCropData, CtreeDecisionDetails, SessionEntry, UserContent } from "../types.ts";
+import type {
+	CtreeCropData,
+	CtreeDecisionDetails,
+	SessionEntry,
+	UserContent,
+} from "../types.ts";
 import {
 	CTREE_CLOSE,
 	CTREE_CROP,
 	CTREE_CROP_TAIL,
 	CTREE_DECISION,
+	CTREE_RANGE_COMPACT,
+	CTREE_RANGE_TAIL,
 	ctreeCloseData,
+	ctreeRangeCompactData,
+	ctreeRangeTailDetails,
 	ctreeForkData,
 	isCustomMessageEntry,
 	isMessageEntry,
@@ -53,25 +62,12 @@ export interface PanelInput {
 	compressInstructions?: string;
 }
 
-export interface CompressionRangeSelection {
-	/** The active leaf before compression. `/undo` returns to this entry. */
-	sourceLeafId: string;
-	/** Normalized first and last entry IDs in active-context order. */
-	startEntryId: string;
-	endEntryId: string;
-	/** Complete entries in the selected safe message groups. */
-	entryIds: string[];
-	/** Atomic message groups. A tool-calling assistant and all results share one group. */
-	groups: string[][];
-	estTokens: number;
-}
-
 export type PanelAction =
 	| { type: "close" }
 	| { type: "jump"; entryId: string }
 	| { type: "branch"; entryId: string }
 	| { type: "merge" }
-	| { type: "compress-range"; range: CompressionRangeSelection; instructions?: string }
+	| { type: "range-apply"; plan: RangePlan; instructions?: string }
 	| { type: "crop-apply"; plan: CropPlan; dryRun: boolean };
 
 export interface VmEffect {
@@ -100,6 +96,7 @@ export interface PanelRow {
 	protected?: boolean;
 	protectReason?: string;
 	selectable?: boolean;
+	rangeEligible?: boolean;
 	rangeStart?: boolean;
 	rangeEnd?: boolean;
 	inRange?: boolean;
@@ -296,6 +293,10 @@ export class PanelVm {
 				} else if (t === CTREE_CROP_TAIL) {
 					row.glyph = "✂";
 					row.text = "[crop tail — rebuilt context]";
+				} else if (t === CTREE_RANGE_TAIL) {
+					const details = ctreeRangeTailDetails(e);
+					row.glyph = "≣";
+					row.text = `[range compact — summary + continuation · ${details?.selectedEntryIds.length ?? 0} source entries]`;
 				} else {
 					row.glyph = "▪";
 					row.text = `[${t}]`;
@@ -312,6 +313,10 @@ export class PanelVm {
 					const d = (e as { data?: CtreeCropData }).data;
 					row.glyph = "✂";
 					row.text = `crop marker · ${d?.stubbed.length ?? 0} stubbed`;
+				} else if (ct === CTREE_RANGE_COMPACT) {
+					const d = ctreeRangeCompactData(e);
+					row.glyph = "≣";
+					row.text = `range compact marker · ${d?.selectedEntryIds.length ?? 0} entries · ~${fmtTokens(d?.selectedEstTokens ?? 0)} source tokens`;
 				} else {
 					row.text = `[${ct}]`;
 				}
@@ -359,38 +364,34 @@ export class PanelVm {
 		return this.compressionGroupByEntry?.get(entryId);
 	}
 
-	private compressionRange(
-		startId = this.rangeStartId,
-		endId = this.rangeEndId,
-	): CompressionRangeSelection | undefined {
-		if (!startId || !endId || !this.leafId) return undefined;
+	private buildRangePlan(startId = this.rangeStartId, endId = this.rangeEndId): RangePlan {
+		if (!startId || !endId || !this.leafId) throw new Error("select both range endpoints");
 		const groups = this.getCompressionGroups();
 		const startIndex = groups.findIndex((group) => group.id === startId);
 		const endIndex = groups.findIndex((group) => group.id === endId);
-		if (startIndex === -1 || endIndex === -1) return undefined;
-		const first = Math.min(startIndex, endIndex);
-		const last = Math.max(startIndex, endIndex);
-		const selected = groups.slice(first, last + 1);
-		if (selected.length === 0 || selected.some((group) => !group.selectable)) return undefined;
-		const entryIds = selected.flatMap((group) => group.entryIds);
-		return {
-			sourceLeafId: this.leafId,
-			startEntryId: entryIds[0] as string,
-			endEntryId: entryIds[entryIds.length - 1] as string,
-			entryIds,
-			groups: selected.map((group) => [...group.entryIds]),
-			estTokens: entryIds.reduce((total, id) => total + estimateEntryTokens(this.tree.get(id) as SessionEntry), 0),
-		};
+		if (startIndex === -1 || endIndex === -1) throw new Error("range endpoint is not in the active context");
+		const first = groups[Math.min(startIndex, endIndex)];
+		const last = groups[Math.max(startIndex, endIndex)];
+		if (!first || !last) throw new Error("range endpoint is missing");
+		return planRange(this.tree, this.leafId, first.startEntryId, last.endEntryId);
+	}
+
+	private currentRangePlan(): RangePlan | undefined {
+		try {
+			return this.buildRangePlan();
+		} catch {
+			return undefined;
+		}
 	}
 
 	private rangeRows(): PanelRow[] {
 		const activeContextIds = new Set(this.slice.map((entry) => entry.id));
-		const range = this.compressionRange();
+		const plan = this.currentRangePlan();
 		const startGroup = this.rangeStartId
 			? this.getCompressionGroups().find((group) => group.id === this.rangeStartId)
 			: undefined;
-		const selectedIds = new Set(range?.entryIds ?? startGroup?.entryIds ?? []);
-		const startEntryId = range?.startEntryId ?? startGroup?.entryIds[0];
+		const selectedIds = new Set(plan?.selectedEntryIds ?? startGroup?.entryIds ?? []);
+		const startEntryId = plan?.startEntryId ?? startGroup?.startEntryId;
 		return this.treeRows(true).map((row) => {
 			const entry = row.id ? this.tree.get(row.id) : undefined;
 			const group = row.id ? this.compressionGroupForEntry(row.id) : undefined;
@@ -412,11 +413,12 @@ export class PanelVm {
 				...row,
 				kind: "range" as const,
 				selectable: group?.selectable ?? false,
+				rangeEligible: group?.selectable ?? false,
 				protected: !(group?.selectable ?? false),
 				protectReason,
 				inRange: row.id ? selectedIds.has(row.id) : false,
 				rangeStart: row.id === startEntryId,
-				rangeEnd: row.id === range?.endEntryId,
+				rangeEnd: row.id === plan?.endEntryId,
 				dim: row.dim || !onCurrentPath || !activeContextIds.has(row.id ?? ""),
 			};
 		});
@@ -713,24 +715,31 @@ export class PanelVm {
 			const second = groups.findIndex((candidate) => candidate.id === group.id);
 			const normalizedStart = groups[Math.min(first, second)];
 			const normalizedEnd = groups[Math.max(first, second)];
-			const range = this.compressionRange(normalizedStart?.id ?? null, normalizedEnd?.id ?? null);
-			if (!range || !normalizedStart || !normalizedEnd) {
-				return { notify: "range crosses a protected or incomplete message group — choose another end" };
+			if (!normalizedStart || !normalizedEnd) return { notify: "invalid range endpoint" };
+			let plan: RangePlan;
+			try {
+				plan = this.buildRangePlan(normalizedStart.id, normalizedEnd.id);
+			} catch (error) {
+				return { notify: `invalid range: ${(error as Error).message}` };
 			}
 			this.rangeStartId = normalizedStart.id;
 			this.rangeEndId = normalizedEnd.id;
 			return {
-				notify: `range ready: ${range.groups.length} group${range.groups.length === 1 ? "" : "s"} · ~${fmtTokens(range.estTokens)} tokens`,
+				notify: `range ready: ${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`,
 			};
 		}
 		if (key === "enter") {
 			if (readOnly) return this.deny();
-			const range = this.compressionRange();
-			if (!range) return { notify: "select a valid start and end with Space first" };
+			let plan: RangePlan;
+			try {
+				plan = this.buildRangePlan();
+			} catch (error) {
+				return { notify: `invalid range: ${(error as Error).message}` };
+			}
 			return {
 				action: {
-					type: "compress-range",
-					range,
+					type: "range-apply",
+					plan,
 					instructions: this.input.compressInstructions?.trim() || undefined,
 				},
 			};
@@ -819,9 +828,9 @@ export class PanelVm {
 				return this.input.sessionName ? `SESSION ${this.input.sessionName} · ${base}` : base;
 			}
 			case "range": {
-				const range = this.compressionRange();
-				if (range)
-					return `COMPRESS RANGE — ${range.groups.length} safe group${range.groups.length === 1 ? "" : "s"} · ${range.entryIds.length} entries · ~${fmtTokens(range.estTokens)} tokens`;
+				const plan = this.currentRangePlan();
+				if (plan)
+					return `COMPRESS RANGE — ${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`;
 				if (this.rangeStartId) return "COMPRESS RANGE — start set · Space sets the end · x clears";
 				return "COMPRESS RANGE — select two safe active-context rows with Space";
 			}

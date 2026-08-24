@@ -93,25 +93,25 @@ New file: `packages/core/src/range-compress.ts`
 
 File: `packages/core/src/vm/panel.ts`
 
-- [ ] Add `"range"` to `PanelView`.
-- [ ] Add a `range-apply` action that carries a validated `RangePlan`.
-- [ ] Extend `PanelRow` with:
-  - [ ] Range eligibility.
-  - [ ] Start marker.
-  - [ ] End marker.
-  - [ ] Inside-range marker.
-  - [ ] Protection reason.
-- [ ] Add range start and end state to `PanelVm`.
-- [ ] Render the full session tree in range mode.
-- [ ] Mark only entries in the active context path as selectable.
-- [ ] Highlight every entry in the normalized selected range.
-- [ ] Show the selected token total in the section title.
-- [ ] Show a clear notice when only one endpoint is selected.
-- [ ] Handle `Space`, `x`, `Enter`, `Esc`, and `r`.
-- [ ] Build the final plan only through the pure core planner.
-- [ ] Return a clear notice for invalid endpoints instead of throwing in the TUI.
-- [ ] Add tree-row rendering for `CTREE_RANGE_TAIL` and `CTREE_RANGE_COMPACT`.
-- [ ] Keep range mutation unavailable when `PanelInput.readOnly` is true.
+- [x] Add `"range"` to `PanelView`.
+- [x] Add a `range-apply` action that carries a validated `RangePlan`.
+- [x] Extend `PanelRow` with:
+  - [x] Range eligibility.
+  - [x] Start marker.
+  - [x] End marker.
+  - [x] Inside-range marker.
+  - [x] Protection reason.
+- [x] Add range start and end state to `PanelVm`.
+- [x] Render the full session tree in range mode.
+- [x] Mark only entries in the active context path as selectable.
+- [x] Highlight every entry in the normalized selected range.
+- [x] Show the selected token total in the section title.
+- [x] Show a clear notice when only one endpoint is selected.
+- [x] Handle `Space`, `x`, `Enter`, `Esc`, and `r`.
+- [x] Build the final plan only through the pure core planner.
+- [x] Return a clear notice for invalid endpoints instead of throwing in the TUI.
+- [x] Add tree-row rendering for `CTREE_RANGE_TAIL` and `CTREE_RANGE_COMPACT`.
+- [x] Keep range mutation unavailable when `PanelInput.readOnly` is true.
 
 ### 5. Render range selection in the TUI
 

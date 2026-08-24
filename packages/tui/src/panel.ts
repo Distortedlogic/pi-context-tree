@@ -128,7 +128,7 @@ export class ContextPanel {
 							? t.mark("[E]")
 							: row.inRange
 								? t.mark("[■]")
-								: row.selectable
+								: row.rangeEligible
 									? t.dim("[ ]")
 									: t.dim("[×]");
 				const glyph = row.dim ? t.dim(row.glyph) : row.glyph;

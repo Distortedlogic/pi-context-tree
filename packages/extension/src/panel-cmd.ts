@@ -153,9 +153,9 @@ export async function executePanelAction(
 			await mergeHandler(pi, ctx, "", deps);
 			return;
 		}
-		case "compress-range": {
+		case "range-apply": {
 			ctx.ui.notify(
-				`compression range selected: ${action.range.groups.length} safe group${action.range.groups.length === 1 ? "" : "s"} · ${action.range.entryIds.length} entries${action.instructions ? ` · instructions: ${action.instructions}` : ""}`,
+				`compression range selected: ${action.plan.selectedEntryIds.length} entries · ~${action.plan.selectedEstTokens} tokens${action.instructions ? ` · instructions: ${action.instructions}` : ""}`,
 				"info",
 			);
 			return;
