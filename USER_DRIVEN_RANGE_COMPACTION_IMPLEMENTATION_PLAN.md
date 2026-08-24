@@ -300,15 +300,15 @@ Existing files only:
 - Existing files under `packages/extension/test/golden/__goldens__/`
 - `packages/extension/test/golden/tui-pty.test.ts`
 
-- [ ] Add a golden scenario with messages before, inside, and after the selected range.
-- [ ] Confirm that original entries stay byte-for-byte unchanged.
-- [ ] Confirm the exact append order of the range tail and marker.
-- [ ] Confirm that a resumed session loads the rebuilt branch.
-- [ ] Add a real-TUI flow for `/compress`.
-- [ ] Select start and end with keyboard input.
-- [ ] Confirm that the range screen renders.
-- [ ] Confirm that apply returns to a valid Pi session without a crash.
-- [ ] Confirm that Pi's summarize-on-leave prompt does not appear.
+- [x] Add a golden scenario with messages before, inside, and after the selected range.
+- [x] Confirm that original entries stay byte-for-byte unchanged.
+- [x] Confirm the exact append order of the range tail and marker.
+- [x] Confirm that a resumed session loads the rebuilt branch.
+- [x] Add a real-TUI flow for `/compress`.
+- [x] Select start and end with keyboard input.
+- [x] Confirm that the range screen renders.
+- [x] Confirm that apply returns to a valid Pi session without a crash.
+- [x] Confirm that Pi's summarize-on-leave prompt does not appear.
 
 ### 16. Update user and design documentation
 

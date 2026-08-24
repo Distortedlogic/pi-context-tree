@@ -12,16 +12,19 @@
  * but never called — the fixture session needs no LLM turns.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { SessionBuilder, filler } from "@pi-context-tree/core/testkit";
 import { describe, expect, it } from "vitest";
+import { MockOpenAI } from "./mock-openai.ts";
 import { EXTENSION_ENTRY, piPath, writeMockModels } from "./rpc-driver.ts";
 
 const PI = piPath();
 const EXPECT = ["/usr/bin/expect", "/bin/expect", "/usr/local/bin/expect"].find((p) => existsSync(p));
+const execFileAsync = promisify(execFile);
 
 function fixtureSession(cwd: string): string {
 	const b = new SessionBuilder(cwd);
@@ -129,6 +132,120 @@ describe.skipIf(!PI || !EXPECT)("real pi TUI in a PTY (mockup keymap walk)", () 
 			.at(-1); // the fixture seeds an earlier squashed close; the discard appends the last one
 		expect(close?.data?.status, "discard close marker not written to the session file").toBe("discarded");
 		expect(close?.data?.note).toBe("dead end");
+	});
+
+	it("runs /compress through range selection and returns to a valid Pi session", { timeout: 120_000 }, async () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "ctree-pty-compress-")));
+		const cwd = join(root, "project");
+		const agentDir = join(root, "agent");
+		const sessionDir = join(root, "sessions");
+		const capture = join(root, "capture.raw");
+		mkdirSync(cwd, { recursive: true });
+		mkdirSync(sessionDir, { recursive: true });
+
+		const mock = new MockOpenAI();
+		mock.drafts.push({
+			match: (system) => system.includes("Summarize one user-selected range"),
+			respond: () => ({ text: "REAL TUI APPROVED SUMMARY: stale cache key caused the failure." }),
+		});
+		const baseUrl = await mock.start();
+		writeMockModels(agentDir, baseUrl, ["trunk-1"]);
+
+		const b = new SessionBuilder(cwd);
+		b.modelChange("mock", "trunk-1");
+		b.user("before range question");
+		b.assistant("before range answer", { provider: "mock", model: "trunk-1" });
+		b.user("inside range start");
+		b.assistant("inside range end", { provider: "mock", model: "trunk-1" });
+		b.user("after range question");
+		b.assistant("after range answer", { provider: "mock", model: "trunk-1" });
+		const sessionFile = join(root, "seed.jsonl");
+		writeFileSync(sessionFile, b.build().text);
+
+		const script = join(root, "compress.exp");
+		writeFileSync(
+			script,
+			[
+				"set timeout 30",
+				'set stty_init "rows 45 columns 120"',
+				`set env(PI_CODING_AGENT_DIR) "${agentDir}"`,
+				`log_file -noappend "${capture}"`,
+				`cd "${cwd}"`,
+				`spawn "${PI}" --session "${sessionFile}" --session-dir "${sessionDir}" --provider mock --model trunk-1 -e "${EXTENSION_ENTRY}"`,
+				'proc pump {secs} { expect -timeout $secs -re "ZZZ_NEVER_MATCHES_ZZZ" {} timeout {} }',
+				"pump 6",
+				'send "/compress preserve exact identifiers\\r"',
+				"pump 4",
+				'send "j"',
+				"pump 1",
+				'send "j"',
+				"pump 1",
+				'send "j"', // inside-range user row
+				"pump 1",
+				'send " "', // start
+				"pump 2",
+				'send "j"', // inside-range assistant row
+				"pump 1",
+				'send " "', // end
+				"pump 2",
+				'send "\\r"', // confirm range and request the draft
+				"pump 6",
+				'send "\\x13"', // Ctrl+S: accept the required editor review
+				"pump 6",
+				'send "/panel\\r"', // proves the command returned to a usable Pi prompt
+				"pump 4",
+				'send "q"',
+				"pump 2",
+				'send "\\x03"',
+				"pump 1",
+				'send "\\x03"',
+				"pump 2",
+				"exit 0",
+			].join("\n"),
+		);
+
+		try {
+			await execFileAsync(EXPECT as string, [script], { encoding: "utf8", timeout: 100_000 });
+		} catch (err) {
+			const error = err as { stdout?: string | Buffer; message: string };
+			throw new Error(`expect compress walk failed: ${error.message}\n${String(error.stdout ?? "").slice(-1500)}`);
+		} finally {
+			await mock.close();
+		}
+
+		const raw = readFileSync(capture, "utf8");
+		const tail = `\n--- capture tail ---\n${raw.slice(-2500)}`;
+		expect(raw, `range screen never painted${tail}`).toContain("COMPRESS RANGE");
+		expect(raw, `start marker never painted${tail}`).toContain("[S]");
+		expect(raw, `end marker never painted${tail}`).toContain("[E]");
+		expect(raw, `range was not applied${tail}`).toContain("compressed range:");
+		expect(raw, `Pi did not return to a valid panel${tail}`).toContain("TRUNK + BRANCHES");
+		expect(raw, `Pi crashed during /compress${tail}`).not.toContain("uncaughtException");
+		expect(raw.toLowerCase(), `summarize-on-leave prompt appeared${tail}`).not.toContain("summarize this branch");
+
+		const entries = readFileSync(sessionFile, "utf8")
+			.trim()
+			.split("\n")
+			.map(
+				(line) =>
+					JSON.parse(line) as {
+						type?: string;
+						id?: string;
+						parentId?: string;
+						customType?: string;
+						content?: string;
+					},
+			);
+		const rangeTail = entries.find((entry) => entry.customType === "ctree/range-tail");
+		const marker = entries.find((entry) => entry.customType === "ctree/range-compact");
+		expect(rangeTail?.content).toContain("REAL TUI APPROVED SUMMARY");
+		expect(marker?.parentId).toBe(rangeTail?.id);
+		expect(entries.indexOf(rangeTail as (typeof entries)[number])).toBeLessThan(
+			entries.indexOf(marker as (typeof entries)[number]),
+		);
+		expect(entries.some((entry) => entry.type === "branch_summary")).toBe(false);
+		expect(readFileSync(sessionFile, "utf8")).toContain("inside range start"); // original stays recoverable
+		expect(mock.unexpected).toHaveLength(0);
 	});
 
 	it("removes a whole Q&A turn through the crop panel (t → space → apply)", { timeout: 120_000 }, () => {
