@@ -184,13 +184,13 @@ New file: `packages/extension/src/range-compress.ts`
 
 File: `packages/extension/src/panel-cmd.ts`
 
-- [ ] Accept `initialView: "range"` through the existing panel options.
-- [ ] Handle the new `range-apply` panel action.
-- [ ] Use a dynamic import for the range apply function to prevent an import cycle.
-- [ ] Apply default summary instructions when range mode starts from `/panel` instead of `/compress`.
-- [ ] Reopen the panel with fresh state after a completed action.
-- [ ] Keep `Ctrl+Q` view-only when Pi does not provide command context.
-- [ ] Keep the standalone `pitree` host read-only.
+- [x] Accept `initialView: "range"` through the existing panel options.
+- [x] Handle the new `range-apply` panel action.
+- [x] Use a dynamic import for the range apply function to prevent an import cycle.
+- [x] Apply default summary instructions when range mode starts from `/panel` instead of `/compress`.
+- [x] Reopen the panel with fresh state after a completed action.
+- [x] Keep `Ctrl+Q` view-only when Pi does not provide command context.
+- [x] Keep the standalone `pitree` host read-only.
 
 ### 9. Register the command
 

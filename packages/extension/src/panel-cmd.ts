@@ -22,6 +22,9 @@ import { type CmdCtxLike, type CtxLike, type Deps, type PiLike, leafIdOf, projec
 import { entriesOf } from "./adapter.ts";
 import { branchHandler } from "./branch.ts";
 
+const DEFAULT_PANEL_RANGE_INSTRUCTIONS =
+	"Create a concise continuation summary that preserves all facts needed to resume the selected work.";
+
 export interface PanelOpenOptions {
 	initialView?: PanelView;
 	premark?: string[];
@@ -155,7 +158,13 @@ export async function executePanelAction(
 		}
 		case "range-apply": {
 			const { applyRangeCompressionPlan } = await import("./range-compress.ts");
-			await applyRangeCompressionPlan(pi, ctx, action.plan, action.instructions, deps);
+			await applyRangeCompressionPlan(
+				pi,
+				ctx,
+				action.plan,
+				action.instructions ?? DEFAULT_PANEL_RANGE_INSTRUCTIONS,
+				deps,
+			);
 			return;
 		}
 		case "crop-apply": {
@@ -190,7 +199,7 @@ export function registerPanel(pi: PiLike, deps: Deps): void {
 	// terminal in raw mode, so XON/XOFF flow control can't eat it).
 	pi.registerShortcut?.("ctrl+q", {
 		description: "pi-context-tree: open the context panel",
-		handler: (ctx) => runPanel(pi, ctx, deps),
+		handler: (ctx) => runPanel(pi, ctx, deps, { readOnly: !isCmdCtx(ctx) }),
 	});
 	pi.registerCommand("decisions", {
 		description: "pi-context-tree: decision records on the current trunk (F7) — --export [path] for portable markdown",
