@@ -46,22 +46,22 @@ Working command name: `/compress [instructions]`.
 
 File: `packages/core/src/types.ts`
 
-- [ ] Add `CTREE_RANGE_COMPACT` for the append-only operation marker.
-- [ ] Add `CTREE_RANGE_TAIL` for the visible summary and rebuilt continuation message.
-- [ ] Add `CtreeRangeCompactData` with schema version `v: 1`.
-- [ ] Store:
-  - [ ] `sourceLeafId`.
-  - [ ] `anchorId`.
-  - [ ] `startEntryId`.
-  - [ ] `endEntryId`.
-  - [ ] Ordered selected entry IDs.
-  - [ ] Selected token estimate.
-  - [ ] Generated summary token estimate.
-  - [ ] Estimated reclaimed tokens.
-  - [ ] Summary model reference.
-  - [ ] SHA-256 prefix for the selected serialized source.
-- [ ] Add type guards for the new marker and message details.
-- [ ] Keep the format permissive for unknown fields and later schema versions.
+- [x] Add `CTREE_RANGE_COMPACT` for the append-only operation marker.
+- [x] Add `CTREE_RANGE_TAIL` for the visible summary and rebuilt continuation message.
+- [x] Add `CtreeRangeCompactData` with schema version `v: 1`.
+- [x] Store:
+  - [x] `sourceLeafId`.
+  - [x] `anchorId`.
+  - [x] `startEntryId`.
+  - [x] `endEntryId`.
+  - [x] Ordered selected entry IDs.
+  - [x] Selected token estimate.
+  - [x] Generated summary token estimate.
+  - [x] Estimated reclaimed tokens.
+  - [x] Summary model reference.
+  - [x] SHA-256 prefix for the selected serialized source.
+- [x] Add type guards for the new marker and message details.
+- [x] Keep the format permissive for unknown fields and later schema versions.
 
 ### 3. Implement pure range planning
 
