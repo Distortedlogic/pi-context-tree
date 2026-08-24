@@ -16,6 +16,7 @@ import {
 	planCrop,
 	planRemoveTurns,
 } from "../crop.ts";
+import { type RangeCandidate, rangeCandidates } from "../range-compress.ts";
 import { type ForkInfo, type ForkPresentation, decisionsOnPath, extractForks, nearestOpenFork } from "../ctree.ts";
 import { type Band, band, estimateContextTokens, estimateEntryTokens, fmtTokens } from "../estimate.ts";
 import { serializeEntry, textOfContent } from "../serialize.ts";
@@ -126,15 +127,6 @@ export interface PanelHeader {
 
 const FIRST_LINE_MAX = 88;
 
-interface CompressionMessageGroup {
-	id: string;
-	entryIds: string[];
-	startIndex: number;
-	endIndex: number;
-	selectable: boolean;
-	protectReason?: string;
-}
-
 function firstLine(text: string): string {
 	const line = text.split("\n", 1)[0] ?? "";
 	return line.length > FIRST_LINE_MAX ? `${line.slice(0, FIRST_LINE_MAX)}…` : line;
@@ -149,8 +141,8 @@ export class PanelVm {
 	private readonly slice: SessionEntry[];
 	private candidates: CropCandidate[] | null = null;
 	private turnsCache: ContextTurn[] | null = null;
-	private compressionGroups: CompressionMessageGroup[] | null = null;
-	private compressionGroupByEntry: Map<string, CompressionMessageGroup> | null = null;
+	private compressionGroups: RangeCandidate[] | null = null;
+	private compressionGroupByEntry: Map<string, RangeCandidate> | null = null;
 
 	view: PanelView;
 	sel = 0;
@@ -352,85 +344,9 @@ export class PanelVm {
 		}
 	}
 
-	private getCompressionGroups(): CompressionMessageGroup[] {
+	private getCompressionGroups(): RangeCandidate[] {
 		if (this.compressionGroups) return this.compressionGroups;
-
-		let incompleteUserId: string | undefined;
-		for (let i = this.slice.length - 1; i >= 0; i--) {
-			const entry = this.slice[i];
-			if (!entry || !isMessageEntry(entry) || entry.message.role !== "user") continue;
-			const hasAssistantAfter = this.slice
-				.slice(i + 1)
-				.some((later) => isMessageEntry(later) && later.message.role === "assistant");
-			if (!hasAssistantAfter) incompleteUserId = entry.id;
-			break;
-		}
-
-		const groups: CompressionMessageGroup[] = [];
-		for (let i = 0; i < this.slice.length; i++) {
-			const entry = this.slice[i];
-			if (!entry) continue;
-
-			if (isMessageEntry(entry) && entry.message.role === "assistant") {
-				const callIds = entry.message.content.filter((block) => block.type === "toolCall").map((block) => block.id);
-				if (callIds.length > 0) {
-					const resultIds: string[] = [];
-					const entryIds = [entry.id];
-					let endIndex = i;
-					while (endIndex + 1 < this.slice.length) {
-						const next = this.slice[endIndex + 1];
-						if (!next || !isMessageEntry(next) || next.message.role !== "toolResult") break;
-						entryIds.push(next.id);
-						resultIds.push(next.message.toolCallId);
-						endIndex += 1;
-					}
-					const callSet = new Set(callIds);
-					const resultSet = new Set(resultIds);
-					const complete =
-						callSet.size === callIds.length &&
-						resultSet.size === resultIds.length &&
-						resultIds.length === callIds.length &&
-						callIds.every((id) => resultSet.has(id)) &&
-						resultIds.every((id) => callSet.has(id));
-					groups.push({
-						id: entry.id,
-						entryIds,
-						startIndex: i,
-						endIndex,
-						selectable: complete,
-						protectReason: complete ? undefined : "incomplete assistant tool-call group",
-					});
-					i = endIndex;
-					continue;
-				}
-			}
-
-			let protectReason: string | undefined;
-			if (entry.id === incompleteUserId) protectReason = "incomplete current user turn";
-			else if (isCustomMessageEntry(entry) && entry.customType === CTREE_DECISION)
-				protectReason = "decision record";
-			else if (isMessageEntry(entry) && entry.message.role === "custom" && entry.message.customType === CTREE_DECISION)
-				protectReason = "decision record";
-			else if (
-				entry.type === "branch_summary" ||
-				entry.type === "compaction" ||
-				(isMessageEntry(entry) &&
-					(entry.message.role === "branchSummary" || entry.message.role === "compactionSummary"))
-			)
-				protectReason = "structural context entry";
-			else if (isMessageEntry(entry) && entry.message.role === "toolResult")
-				protectReason = "tool result without its assistant tool call";
-
-			groups.push({
-				id: entry.id,
-				entryIds: [entry.id],
-				startIndex: i,
-				endIndex: i,
-				selectable: protectReason === undefined,
-				protectReason,
-			});
-		}
-
+		const groups = this.leafId ? rangeCandidates(this.tree, this.leafId) : [];
 		this.compressionGroups = groups;
 		this.compressionGroupByEntry = new Map(
 			groups.flatMap((group) => group.entryIds.map((entryId) => [entryId, group] as const)),
@@ -438,7 +354,7 @@ export class PanelVm {
 		return groups;
 	}
 
-	private compressionGroupForEntry(entryId: string): CompressionMessageGroup | undefined {
+	private compressionGroupForEntry(entryId: string): RangeCandidate | undefined {
 		this.getCompressionGroups();
 		return this.compressionGroupByEntry?.get(entryId);
 	}

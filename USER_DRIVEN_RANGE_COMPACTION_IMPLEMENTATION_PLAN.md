@@ -67,27 +67,27 @@ File: `packages/core/src/types.ts`
 
 New file: `packages/core/src/range-compress.ts`
 
-- [ ] Add a `RangeCandidate` type for selectable tree entries.
-- [ ] Add a `RangePlan` type for the complete operation.
-- [ ] Build candidates from the current `contextSlice`, not from inactive history.
-- [ ] Record path order, token estimate, row label, and protection state for each candidate.
-- [ ] Group assistant tool-call messages with their related tool-result entries.
-- [ ] Reject a range endpoint that would split a required tool-call group.
-- [ ] Reject IDs that are missing, off-path, structural-only, or protected.
-- [ ] Normalize reversed start and end IDs.
-- [ ] Find the anchor immediately before the first selected safe group.
-- [ ] Collect all selected entries in source order.
-- [ ] Collect all entries after the selected range through `sourceLeafId`.
-- [ ] Serialize the selected range for the summary request.
-- [ ] Compute selected tokens and the source hash.
-- [ ] Render the rebuilt custom message as:
+- [x] Add a `RangeCandidate` type for selectable tree entries.
+- [x] Add a `RangePlan` type for the complete operation.
+- [x] Build candidates from the current `contextSlice`, not from inactive history.
+- [x] Record path order, token estimate, row label, and protection state for each candidate.
+- [x] Group assistant tool-call messages with their related tool-result entries.
+- [x] Reject a range endpoint that would split a required tool-call group.
+- [x] Reject IDs that are missing, off-path, structural-only, or protected.
+- [x] Normalize reversed start and end IDs.
+- [x] Find the anchor immediately before the first selected safe group.
+- [x] Collect all selected entries in source order.
+- [x] Collect all entries after the selected range through `sourceLeafId`.
+- [x] Serialize the selected range for the summary request.
+- [x] Compute selected tokens and the source hash.
+- [x] Render the rebuilt custom message as:
   1. A short range-compaction header.
   2. The approved summary.
   3. The unchanged serialized continuation after the range, when present.
-- [ ] Do not copy selected source text into the rebuilt message.
-- [ ] Preserve the continuation in source order.
-- [ ] Support a range that ends at the current leaf.
-- [ ] Export the planner from `packages/core/src/index.ts`.
+- [x] Do not copy selected source text into the rebuilt message.
+- [x] Preserve the continuation in source order.
+- [x] Support a range that ends at the current leaf.
+- [x] Export the planner from `packages/core/src/index.ts`.
 
 ### 4. Add range state to the panel view-model
 
