@@ -154,10 +154,8 @@ export async function executePanelAction(
 			return;
 		}
 		case "range-apply": {
-			ctx.ui.notify(
-				`compression range selected: ${action.plan.selectedEntryIds.length} entries · ~${action.plan.selectedEstTokens} tokens${action.instructions ? ` · instructions: ${action.instructions}` : ""}`,
-				"info",
-			);
+			const { applyRangeCompressionPlan } = await import("./range-compress.ts");
+			await applyRangeCompressionPlan(pi, ctx, action.plan, action.instructions, deps);
 			return;
 		}
 		case "crop-apply": {
@@ -185,16 +183,6 @@ export function registerPanel(pi: PiLike, deps: Deps): void {
 	pi.registerCommand("panel", {
 		description: "pi-context-tree: full-screen context panel (tree · range · crop · consumers · decisions)",
 		handler: (_args, ctx) => runPanel(pi, ctx, deps),
-	});
-	pi.registerCommand("compress", {
-		description: "pi-context-tree: select one active-context range to summarize; optional text adds summary instructions",
-		handler: async (args, ctx) => {
-			const action = await openPanel(pi, ctx, {
-				initialView: "range",
-				compressInstructions: args.trim() || undefined,
-			});
-			await executePanelAction(pi, ctx, action, deps);
-		},
 	});
 	// ctrl+q, not ctrl+t: pi reserves ctrl+t for app.thinking.toggle (it's in
 	// RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS), so a ctrl+t shortcut is

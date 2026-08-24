@@ -156,29 +156,29 @@ File: `packages/extension/src/draft.ts`
 
 New file: `packages/extension/src/range-compress.ts`
 
-- [ ] Parse optional summary instructions from command arguments.
-- [ ] Wait for the agent to become idle.
-- [ ] Derive the current session state.
-- [ ] Reject an empty session.
-- [ ] Open `/panel` in range-selection mode.
-- [ ] Stop without a change when the panel closes or selection is cancelled.
-- [ ] Recheck `sourceLeafId` after the panel closes.
-- [ ] Draft a summary from only the selected serialized range.
-- [ ] Show draft progress through `ctx.ui.notify`.
-- [ ] Open the summary in `ctx.ui.editor` for required user review.
-- [ ] Treat an empty or cancelled editor result as a full cancellation.
-- [ ] Recheck the source leaf and selected IDs after summary review.
-- [ ] Recompute the plan if validation requires fresh session data.
-- [ ] Render the rebuilt summary and continuation message.
-- [ ] Navigate to `anchorId` with `{ summarize: false }`.
-- [ ] Stop if navigation is cancelled.
-- [ ] Append `CTREE_RANGE_TAIL` with `triggerTurn: false`.
-- [ ] Append `CTREE_RANGE_COMPACT` after the visible custom message.
-- [ ] Store the original `sourceLeafId` for recovery and undo.
-- [ ] Refresh the ambient context display.
-- [ ] Notify the user of the selected, summary, and reclaimed token estimates.
-- [ ] Keep all original JSONL entries unchanged.
-- [ ] Register the command through a `registerRangeCompress` function.
+- [x] Parse optional summary instructions from command arguments.
+- [x] Wait for the agent to become idle.
+- [x] Derive the current session state.
+- [x] Reject an empty session.
+- [x] Open `/panel` in range-selection mode.
+- [x] Stop without a change when the panel closes or selection is cancelled.
+- [x] Recheck `sourceLeafId` after the panel closes.
+- [x] Draft a summary from only the selected serialized range.
+- [x] Show draft progress through `ctx.ui.notify`.
+- [x] Open the summary in `ctx.ui.editor` for required user review.
+- [x] Treat an empty or cancelled editor result as a full cancellation.
+- [x] Recheck the source leaf and selected IDs after summary review.
+- [x] Recompute the plan if validation requires fresh session data.
+- [x] Render the rebuilt summary and continuation message.
+- [x] Navigate to `anchorId` with `{ summarize: false }`.
+- [x] Stop if navigation is cancelled.
+- [x] Append `CTREE_RANGE_TAIL` with `triggerTurn: false`.
+- [x] Append `CTREE_RANGE_COMPACT` after the visible custom message.
+- [x] Store the original `sourceLeafId` for recovery and undo.
+- [x] Refresh the ambient context display.
+- [x] Notify the user of the selected, summary, and reclaimed token estimates.
+- [x] Keep all original JSONL entries unchanged.
+- [x] Register the command through a `registerRangeCompress` function.
 
 ### 8. Connect range actions to the shared panel
 
