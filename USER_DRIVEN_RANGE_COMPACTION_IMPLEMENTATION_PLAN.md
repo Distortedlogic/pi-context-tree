@@ -196,10 +196,10 @@ File: `packages/extension/src/panel-cmd.ts`
 
 File: `packages/extension/src/index.ts`
 
-- [ ] Import and register `registerRangeCompress`.
-- [ ] Update the extension command comment.
-- [ ] Keep registration order deterministic.
-- [ ] Do not add a new package dependency.
+- [x] Import and register `registerRangeCompress`.
+- [x] Update the extension command comment.
+- [x] Keep registration order deterministic.
+- [x] Do not add a new package dependency.
 
 ### 10. Add append-only undo support
 
