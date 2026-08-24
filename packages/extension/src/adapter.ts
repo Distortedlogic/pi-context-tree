@@ -1,7 +1,7 @@
 /**
  * Structural slice of pi's extension API — the ONLY pi-coupled surface
  * (TRD §1: session-adapter). Commands code against these interfaces; tests
- * provide fakes; src/index.ts binds the real ExtensionAPI (verified 0.79.1).
+ * provide fakes; src/index.ts binds the real ExtensionAPI (verified 0.84.3).
  */
 
 import { basename } from "node:path";
@@ -33,6 +33,13 @@ export interface ModelRegistryLike {
 	getApiKeyAndHeaders(
 		model: ModelLike,
 	): Promise<{ ok: boolean; apiKey?: string; headers?: Record<string, string>; error?: string }>;
+	complete?(
+		model: ModelLike,
+		context: {
+			systemPrompt?: string;
+			messages: { role: string; content: { type: string; text: string }[]; timestamp: number }[];
+		},
+	): Promise<{ content: { type: string; text?: string }[] }>;
 }
 
 export interface CtxLike {

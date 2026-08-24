@@ -1,6 +1,6 @@
 /**
  * /panel + Ctrl+Q (F4): the full-screen Context Panel, hosted as a pi overlay
- * via ctx.ui.custom({overlay:true}) — the mechanism verified public in 0.79.1.
+ * via ctx.ui.custom({overlay:true}) — the mechanism verified public in 0.84.3.
  * The panel returns ONE action; mutations execute back here in command context
  * after re-validation (TRD §6).
  */
@@ -131,7 +131,7 @@ export async function executePanelAction(
 ): Promise<void> {
 	if (!action || action.type === "close") return;
 	if (!isCmdCtx(ctx)) {
-		ctx.ui.notify("this action needs a command context — run /panel (Ctrl+Q is view-only in 0.79.1)", "warning");
+		ctx.ui.notify("this action needs a command context — run /panel (Ctrl+Q is view-only in 0.84.3)", "warning");
 		return;
 	}
 	switch (action.type) {

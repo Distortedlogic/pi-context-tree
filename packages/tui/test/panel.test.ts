@@ -1,4 +1,4 @@
-import { TUI } from "@earendil-works/pi-tui";
+import { TuiAltScreen } from "@earendil-works/pi-tui";
 import type { PanelAction } from "@pi-context-tree/core";
 import { SessionBuilder, filler } from "@pi-context-tree/core/testkit";
 import { describe, expect, it } from "vitest";
@@ -312,7 +312,7 @@ describe("ContextPanel actions", () => {
 describe("ContextPanel inside a TUI (xterm headless smoke)", () => {
 	it("mounts, renders into the viewport, and survives input", async () => {
 		const vterm = new VirtualTerminal(100, 36);
-		const tui = new TUI(vterm);
+		const tui = new TuiAltScreen(vterm);
 		const { panel } = makePanel();
 		tui.addChild(panel as never);
 		tui.start();

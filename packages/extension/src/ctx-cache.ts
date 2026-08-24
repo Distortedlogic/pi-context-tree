@@ -1,5 +1,5 @@
 /**
- * Remembered-ctx bridge: pi 0.79.1's getArgumentCompletions(prefix) receives
+ * Remembered-ctx bridge: pi 0.84.3's getArgumentCompletions(prefix) receives
  * no context, so completions can't reach the model registry directly. Ambient
  * events and every command stash the last-seen ctx here; completions read it.
  * Slightly stale by design — the registry barely changes within a session.

@@ -1,5 +1,5 @@
 /**
- * Pi session-format types (verified against earendil-works/pi-mono@0.79.1
+ * Pi session-format types (verified against earendil-works/pi-mono@0.84.3
  * docs/session-format.md and src/core/session-manager.ts) plus ctree's own
  * custom-entry payloads. Parsing is permissive: unknown entry/message shapes
  * are preserved, never dropped silently.

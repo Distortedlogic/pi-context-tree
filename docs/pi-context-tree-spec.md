@@ -154,7 +154,7 @@ List decision records on the current trunk (also a panel view).
 |---|---|
 | Name collisions with pi built-ins or other extensions (`/branch`, `/merge`, `/crop`) | Command names configurable (settings file); pi suffixes duplicates — document this; defaults chosen to match the originating workflow |
 | pi internals shift | Pin pi version against `earendil-works/pi-mono`; single session-adapter module; re-verify `BranchSummaryEntry` + compaction interfaces (F2.5, TRD §3) before M3; non-blocking CI lane vs `pi@latest` |
-| pi-tui API insufficient for full-screen panel | **Largely retired (0.79.1):** `ctx.ui.custom({overlay:true})` is public, documented ("Overlay Mode (Experimental)", extensions.md), with working examples (`examples/extensions/overlay-test.ts`). M2 spike now *validates* full-screen sizing/key-scoping/lifecycle rather than discovering capability; Ink child-process fallback kept only as contingency for the Experimental flag |
+| pi-tui API insufficient for full-screen panel | **Largely retired (0.84.3):** `ctx.ui.custom({overlay:true})` is public, documented ("Overlay Mode (Experimental)", extensions.md), with working examples (`examples/extensions/overlay-test.ts`). M2 spike now *validates* full-screen sizing/key-scoping/lifecycle rather than discovering capability; Ink child-process fallback kept only as contingency for the Experimental flag |
 | Summary quality on cheap models | Mandatory confirm/edit (F2.2) |
 | Concurrent writers | Extension mutates only via pi context; pitree/standalone panel read-only |
 
@@ -216,7 +216,7 @@ As v0.1 (registerCommand/Shortcut, ExtensionCommandContext + waitForIdle, sessio
 
 Forest status: dangling = open fork with no close. Unknown versions/types: skip + warn.
 
-Note (verified 0.79.1): the decision record rides pi's native `custom_message` entry type — extensions persist it via `pi.sendMessage({customType:"ctree/decision", content, display:true, details})`, it enters LLM context as a user-role message, and `registerMessageRenderer("ctree/decision", …)` gives it the ◆ rendering. `ctree/fork`, `ctree/close`, `ctree/crop` are state-only `custom` entries via `pi.appendEntry()` (never sent to the LLM). `ctree/close.decisionEntryId` points at the `custom_message` entry.
+Note (verified 0.84.3): the decision record rides pi's native `custom_message` entry type — extensions persist it via `pi.sendMessage({customType:"ctree/decision", content, display:true, details})`, it enters LLM context as a user-role message, and `registerMessageRenderer("ctree/decision", …)` gives it the ◆ rendering. `ctree/fork`, `ctree/close`, `ctree/crop` are state-only `custom` entries via `pi.appendEntry()` (never sent to the LLM). `ctree/close.decisionEntryId` points at the `custom_message` entry.
 
 ## 5. Algorithms
 
@@ -247,7 +247,7 @@ No pre-existing local pi and **no API keys** are required for development — pi
 | # | Deliverable | Acceptance |
 |---|---|---|
 | M1 | `core`: parser, forest, estimator, fixtures | unit green incl. truncated/legacy/50MB |
-| M2 | **Spike:** full-screen `ui.custom({overlay:true})` panel host (hello-world via `/panel` + `Ctrl+Q`) | overlay API verified public in 0.79.1 but flagged Experimental — spike validates full-screen sizing, key scoping, clean open/close during idle; fallback decision recorded |
+| M2 | **Spike:** full-screen `ui.custom({overlay:true})` panel host (hello-world via `/panel` + `Ctrl+Q`) | overlay API verified public in 0.84.3 but flagged Experimental — spike validates full-screen sizing, key scoping, clean open/close during idle; fallback decision recorded |
 | M3 | `/branch` + labels + model switch + title bar + gauge | integration: fork, label, model switch/restore verified |
 | M4 | `/merge` squash + discard + `--no-llm` + confirm/edit UI | golden files; trunk model restored; F2.5 interop verified |
 | M5 | Panel: Tree view + inspector + jump + branch-from-node | scenario E keybindings work; no agent-loop blocking |

@@ -10,7 +10,7 @@
   <a href="https://github.com/navbytes/pi-context-tree/actions/workflows/ci.yml"><img src="https://github.com/navbytes/pi-context-tree/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A522.19-339933?logo=node.js&logoColor=white" alt="Node >= 22.19">
-  <img src="https://img.shields.io/badge/pi-0.79.1-8957e5" alt="pi 0.79.1">
+  <img src="https://img.shields.io/badge/pi-0.84.3-8957e5" alt="pi 0.84.3">
 </p>
 
 <p align="center">
@@ -81,16 +81,16 @@ The full-screen context panel — the tree with token costs, branch status color
 
 ## Requirements
 
-- [**pi**](https://github.com/earendil-works/pi) (the coding agent) — built and tested against `@earendil-works/*@0.79.1` (newer pi usually works too; see [Status](#status--compatibility)).
+- [**pi**](https://github.com/earendil-works/pi) (the coding agent) — built and tested against `@earendil-works/*@0.84.3` (newer pi usually works too; see [Status](#status--compatibility)).
 - **Node.js ≥ 22.19**.
 
 `pi install` handles everything else; pi provides its core packages to the extension at runtime.
 
 ## Status & compatibility
 
-**Maturity:** **v0.1.0 — the first public release.** Every command and panel view works against pi `0.79.1`, covered by golden and real-TUI tests (see [Development](#development)). Bug reports and feedback are very welcome.
+**Maturity:** **v0.1.0 — the first public release.** Every command and panel view works against pi `0.84.3`, covered by golden and real-TUI tests (see [Development](#development)). Bug reports and feedback are very welcome.
 
-**pi version:** built and tested against `@earendil-works/*@0.79.1`. The extension declares a *permissive* peer dependency on pi, so it also loads against newer pi — **a new pi release doesn't require an update**, and most just keep working. A non-blocking CI lane runs the full integration suite against `pi@latest` on every push as an early warning for breaking changes; if it (or your own session) breaks on a newer pi, please [open an issue](https://github.com/navbytes/pi-context-tree/issues).
+**pi version:** built and tested against `@earendil-works/*@0.84.3`. The extension declares a *permissive* peer dependency on pi, so it also loads against newer pi — **a new pi release doesn't require an update**, and most just keep working. A non-blocking CI lane runs the full integration suite against `pi@latest` on every push as an early warning for breaking changes; if it (or your own session) breaks on a newer pi, please [open an issue](https://github.com/navbytes/pi-context-tree/issues).
 
 ## Install
 
@@ -252,7 +252,7 @@ Flags dangling branches (open forks with no close marker) across every project. 
 
 ## FAQ
 
-**`Ctrl+Q` doesn't open the panel.** It's view-only in pi 0.79.1 (shortcuts get no command context) — use `/panel` to mutate. If even view-only won't open, a terminal multiplexer may be intercepting the key; run `/panel` directly.
+**`Ctrl+Q` doesn't open the panel.** It's view-only in pi 0.84.3 (shortcuts get no command context) — use `/panel` to mutate. If even view-only won't open, a terminal multiplexer may be intercepting the key; run `/panel` directly.
 
 **My commands appear twice.** You have both the installed package and a `-e` dev tree loaded. Remove one — `pi remove git:github.com/navbytes/pi-context-tree`, or stop passing `-e`.
 

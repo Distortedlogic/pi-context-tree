@@ -23,7 +23,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [0.1.0] — 2026-06-13
 
-First public release — a git-style branch/merge/crop workflow plus a full-screen context panel for [pi](https://github.com/earendil-works/pi) sessions. Append-only and recoverable; pinned to `@earendil-works/*@0.79.1`.
+First public release — a git-style branch/merge/crop workflow plus a full-screen context panel for [pi](https://github.com/earendil-works/pi) sessions. Append-only and recoverable; pinned to `@earendil-works/*@0.84.3`.
 
 ### Commands
 - **`/branch <name> [model]`** — label the current point (mirrored into pi's native labels) and fork off, optionally onto a cheaper branch model; the trunk model is recorded and restored on merge. Tab-completes model ids.

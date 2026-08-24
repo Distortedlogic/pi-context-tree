@@ -12,4 +12,4 @@ The load-bearing safety guarantee is the **append-only invariant**: the extensio
 
 ## Supported versions
 
-This project tracks the latest release against a pinned pi version (`@earendil-works/*@0.79.1`). Fixes land on `main` and ship in the next tagged release; there are no long-term support branches yet.
+This project tracks the latest release against a pinned pi version (`@earendil-works/*@0.84.3`). Fixes land on `main` and ship in the next tagged release; there are no long-term support branches yet.

@@ -4,7 +4,6 @@
  * pi's own example extensions use (qna.ts, handoff.ts).
  */
 
-import { complete } from "@earendil-works/pi-ai";
 import { CHARS_PER_TOKEN } from "@pi-context-tree/core";
 import type { CmdCtxLike, DraftFn, ModelLike } from "./adapter.ts";
 import { resolveModel } from "./adapter.ts";
@@ -35,18 +34,11 @@ export const RANGE_COMPRESSION_SYSTEM_PROMPT = [
 export const realDraft: DraftFn = async (ctx, modelRef, system, user) => {
 	const model: ModelLike | undefined = (modelRef ? resolveModel(ctx, modelRef) : undefined) ?? ctx.model;
 	if (!model) throw new Error("no model available for drafting");
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok || !auth.apiKey) {
-		throw new Error(auth.ok ? `no API key for ${model.provider}/${model.id}` : (auth.error ?? "auth failed"));
-	}
-	const response = await complete(
-		model as any,
-		{
-			systemPrompt: system,
-			messages: [{ role: "user", content: [{ type: "text", text: user }], timestamp: Date.now() }],
-		},
-		{ apiKey: auth.apiKey, headers: auth.headers },
-	);
+	if (!ctx.modelRegistry.complete) throw new Error("model registry completion API is unavailable");
+	const response = await ctx.modelRegistry.complete(model, {
+		systemPrompt: system,
+		messages: [{ role: "user", content: [{ type: "text", text: user }], timestamp: Date.now() }],
+	});
 	const text = (response.content as { type: string; text?: string }[])
 		.filter((b) => b.type === "text")
 		.map((b) => b.text ?? "")

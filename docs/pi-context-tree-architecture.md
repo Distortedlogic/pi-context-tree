@@ -1,6 +1,6 @@
 # pi-context-tree — Architecture & Implementation Notes
 
-**Companion to:** [pi-context-tree-spec.md](pi-context-tree-spec.md) v0.4 · **Pinned pi:** `@earendil-works/pi-coding-agent@0.79.1` + `@earendil-works/pi-tui@0.79.1`
+**Companion to:** [pi-context-tree-spec.md](pi-context-tree-spec.md) v0.4 · **Pinned pi:** `@earendil-works/pi-coding-agent@0.84.3` + `@earendil-works/pi-tui@0.84.3`
 **Status:** Reviewed source; all API claims below carry file references into the pinned repo.
 
 ---
@@ -27,7 +27,7 @@
 | RPC mode (testing) | `pi --mode rpc`, JSONL stdin/stdout; extension commands invokable via `{"type":"prompt","message":"/cmd args"}`; `get_commands` lists them | `docs/rpc.md` |
 | Token estimation | pi's own heuristic is chars/4 (`ESTIMATED_IMAGE_CHARS=4800` per image) — matches our core estimator | `compaction.ts:250-290` |
 
-**Hard absences (0.79.1):** no extension API appends `message`-type entries; no API removes/edits individual entries; the internal `TreeSelectorComponent` used by `/tree` is not exported (copy its flatten-pattern, don't import).
+**Hard absences (0.84.3):** no extension API appends `message`-type entries; no API removes/edits individual entries; the internal `TreeSelectorComponent` used by `/tree` is not exported (copy its flatten-pattern, don't import).
 
 ---
 
@@ -35,7 +35,7 @@
 
 - **Language/runtime:** TypeScript 5.x, ESM only, Node ≥ 22.19 (pi-tui's floor). **Bun considered and rejected:** `extension`/`tui` run inside pi's Node process (extensions loaded as TS source via jiti — `loader.ts:15` — so Bun APIs would crash there, and no build step is needed); `pitree` could run on bun but pi users already have Node ≥22.19, its startup is parse-bound not boot-bound, and it shares code with the in-pi packages; pi-mono itself is npm + vitest/`node --test` + biome, and matching that toolchain keeps the VirtualTerminal harness and upstream PRs frictionless. Revisit only if `pitree` ever wants `bun build --compile` single-binary distribution.
 - **Workspace:** npm workspaces, `packages/{core,tui,extension,pitree,dashboard}` per TRD §1 — confirmed viable, no changes.
-- **Deps:** `@earendil-works/pi-tui@0.79.1` (published, standalone-capable: `TUI` + `ProcessTerminal` + components). Extension package type-imports `@earendil-works/pi-coding-agent@0.79.1`. LLM drafting reuses `@earendil-works/ai` (`completeSimple` — same path pi's branch-summarization takes; verify export name at impl).
+- **Deps:** `@earendil-works/pi-tui@0.84.3` (published, standalone-capable: `TUI` + `ProcessTerminal` + components). Extension package type-imports `@earendil-works/pi-coding-agent@0.84.3`. LLM drafting reuses `@earendil-works/ai` (`completeSimple` — same path pi's branch-summarization takes; verify export name at impl).
 - **Test:** vitest everywhere; pi-tui's **`VirtualTerminal`** (xterm.js headless) pattern for TUI tests — instantiate `TUI(vterm)`, `vterm.sendInput(...)`, assert on viewport lines (copy the harness from `packages/tui/test/virtual-terminal.ts`, it is not exported).
 - **Lint/format:** biome (pi-mono uses it; zero-config familiarity for upstream PRs).
 

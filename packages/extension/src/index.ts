@@ -4,7 +4,7 @@
  * or symlink this package into ~/.pi/agent/extensions/ for auto-discovery.
  *
  * Commands: /branch /merge /crop /compress /panel /decisions (+ Ctrl+Q).
- * Pinned against pi 0.79.1 — see pi-context-tree-architecture.md.
+ * Pinned against pi 0.84.3 — see pi-context-tree-architecture.md.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -21,7 +21,7 @@ import { registerRangeCompress } from "./range-compress.ts";
 import { registerUndo } from "./undo.ts";
 
 export default function piContextTree(api: ExtensionAPI): void {
-	// pi's ExtensionAPI is a structural superset of PiLike (verified 0.79.1).
+	// pi's ExtensionAPI is a structural superset of PiLike (verified 0.84.3).
 	const pi = api as unknown as PiLike;
 	const deps: Deps = { draft: realDraft };
 

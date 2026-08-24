@@ -1,5 +1,5 @@
 /**
- * Integration smoke against the REAL pi (0.79.1): boot `pi --mode rpc` with
+ * Integration smoke against the REAL pi (0.84.3): boot `pi --mode rpc` with
  * our extension loaded from source (jiti), ask for the command list, and
  * assert /branch /merge /crop /panel /decisions registered. Skipped when pi
  * is not installed. No API key needed — we never prompt the model.

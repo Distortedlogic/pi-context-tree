@@ -4,7 +4,7 @@
  * every mutating action is denied. Mutation outside pi is out of scope (v2).
  */
 
-import { ProcessTerminal, TUI, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { ProcessTerminal, TuiAltScreen, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	type Forest,
 	type PanelInput,
@@ -84,7 +84,7 @@ export async function runUi(root: string): Promise<void> {
 	const forest = await scanForest(root);
 	const items = pickerItems(forest);
 
-	const tui = new TUI(new ProcessTerminal());
+	const tui = new TuiAltScreen(new ProcessTerminal());
 	let current: { dispose?: () => void } | null = null;
 
 	const showPicker = (): void => {
