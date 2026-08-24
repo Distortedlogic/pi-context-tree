@@ -219,11 +219,11 @@ Files:
 - `packages/extension/src/ambient.ts`
 - `packages/core/src/consumers.ts`
 
-- [ ] Add `/compress` to the red-band guidance.
-- [ ] Add `/compress` to the built-in `/compact` warning.
-- [ ] Classify range summaries separately from generic extension messages.
-- [ ] Keep summary and continuation tokens in total context accounting.
-- [ ] Keep the context gauge behavior unchanged.
+- [x] Add `/compress` to the red-band guidance.
+- [x] Add `/compress` to the built-in `/compact` warning.
+- [x] Classify range summaries separately from generic extension messages.
+- [x] Keep summary and continuation tokens in total context accounting.
+- [x] Keep the context gauge behavior unchanged.
 
 ### 12. Add core coverage in existing test files
 

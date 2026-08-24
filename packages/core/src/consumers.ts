@@ -5,7 +5,7 @@
 
 import { estimateEntryTokens } from "./estimate.ts";
 import type { SessionEntry } from "./types.ts";
-import { CTREE_CROP_TAIL, CTREE_DECISION, isMessageEntry } from "./types.ts";
+import { CTREE_CROP_TAIL, CTREE_DECISION, CTREE_RANGE_TAIL, isMessageEntry } from "./types.ts";
 
 export interface ConsumerRow {
 	key: string;
@@ -42,6 +42,7 @@ function bucketOf(e: SessionEntry): string {
 			const t = (e as { customType: string }).customType;
 			if (t === CTREE_DECISION) return "decision records";
 			if (t === CTREE_CROP_TAIL) return "crop stubs";
+			if (t === CTREE_RANGE_TAIL) return "range summaries";
 			return "extension messages";
 		}
 		case "branch_summary":
