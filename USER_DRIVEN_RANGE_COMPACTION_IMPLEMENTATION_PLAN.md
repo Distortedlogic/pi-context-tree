@@ -134,23 +134,23 @@ Files:
 
 File: `packages/extension/src/draft.ts`
 
-- [ ] Add a range-compression system prompt.
-- [ ] Require the summary to preserve:
-  - [ ] User intent.
-  - [ ] Decisions and rejected approaches.
-  - [ ] File paths and identifiers.
-  - [ ] Commands and important output.
-  - [ ] Errors and failure causes.
-  - [ ] External side effects.
-  - [ ] Validation state.
-  - [ ] Unfinished work and the next action.
-- [ ] Require summary text only, with no preamble.
-- [ ] Add a prompt builder that includes the selected serialized source.
-- [ ] Add optional instructions from the slash command.
-- [ ] Use the current model through the existing `DraftFn` dependency.
-- [ ] Do not truncate individual selected messages without an explicit size error.
-- [ ] Detect when the selected source cannot fit in the model context with output reserve.
-- [ ] Return an actionable error when the selected source is too large.
+- [x] Add a range-compression system prompt.
+- [x] Require the summary to preserve:
+  - [x] User intent.
+  - [x] Decisions and rejected approaches.
+  - [x] File paths and identifiers.
+  - [x] Commands and important output.
+  - [x] Errors and failure causes.
+  - [x] External side effects.
+  - [x] Validation state.
+  - [x] Unfinished work and the next action.
+- [x] Require summary text only, with no preamble.
+- [x] Add a prompt builder that includes the selected serialized source.
+- [x] Add optional instructions from the slash command.
+- [x] Use the current model through the existing `DraftFn` dependency.
+- [x] Do not truncate individual selected messages without an explicit size error.
+- [x] Detect when the selected source cannot fit in the model context with output reserve.
+- [x] Return an actionable error when the selected source is too large.
 
 ### 7. Implement the `/compress` command and apply flow
 
