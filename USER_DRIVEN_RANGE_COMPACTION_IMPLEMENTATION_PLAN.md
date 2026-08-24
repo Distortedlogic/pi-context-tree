@@ -205,12 +205,12 @@ File: `packages/extension/src/index.ts`
 
 File: `packages/extension/src/undo.ts`
 
-- [ ] Detect the latest active `CTREE_RANGE_COMPACT` marker.
-- [ ] Read its `sourceLeafId`.
-- [ ] Describe the action as restoring the compressed message range.
-- [ ] Navigate to the original source leaf with `summarize: false` after confirmation.
-- [ ] Keep the summary and marker in off-path history.
-- [ ] Preserve the current last-active-mutation ordering with branch, merge, and crop operations.
+- [x] Detect the latest active `CTREE_RANGE_COMPACT` marker.
+- [x] Read its `sourceLeafId`.
+- [x] Describe the action as restoring the compressed message range.
+- [x] Navigate to the original source leaf with `summarize: false` after confirmation.
+- [x] Keep the summary and marker in off-path history.
+- [x] Preserve the current last-active-mutation ordering with branch, merge, and crop operations.
 
 ### 11. Update context guidance and accounting
 
