@@ -120,21 +120,21 @@ export class ContextPanel {
 		let left: string;
 		switch (row.kind) {
 			case "range": {
-				const marker = row.rangeStart && row.rangeEnd
-					? t.mark("[S/E]")
-					: row.rangeStart
-						? t.mark("[S]")
-						: row.rangeEnd
-							? t.mark("[E]")
-							: row.inRange
-								? t.mark("[■]")
-								: row.rangeEligible
-									? t.dim("[ ]")
-									: t.dim("[×]");
-				const glyph = row.dim ? t.dim(row.glyph) : row.glyph;
-				const text = row.dim ? t.dim(row.text) : row.text;
+				const marker =
+					row.rangeStart && row.rangeEnd
+						? `${t.rangeStart("[S]")}${t.rangeEnd("[E]")}`
+						: row.rangeStart
+							? t.rangeStart("[S]")
+							: row.rangeEnd
+								? t.rangeEnd("[E]")
+								: row.inRange
+									? t.rangeSelected("[■]")
+									: row.rangeEligible
+										? t.dim("[ ]")
+										: t.dim("[×]");
+				const paint = row.protected ? t.dim : row.inRange ? t.rangeSelected : row.dim ? t.dim : t.text;
 				const reason = row.protectReason ? t.dim(` (${row.protectReason})`) : "";
-				left = `${indent}${marker} ${glyph} ${text}${reason}`;
+				left = `${indent}${marker} ${paint(row.glyph)} ${paint(row.text)}${reason}`;
 				break;
 			}
 			case "fork": {

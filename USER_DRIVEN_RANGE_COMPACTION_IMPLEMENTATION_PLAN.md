@@ -120,15 +120,15 @@ Files:
 - `packages/tui/src/panel.ts`
 - `packages/tui/src/theme.ts`
 
-- [ ] Render a distinct start marker.
-- [ ] Render a distinct end marker.
-- [ ] Render all rows inside the selected range with one consistent style.
-- [ ] Render protected rows as unavailable and include the protection reason.
-- [ ] Keep token values and warnings visible during selection.
-- [ ] Add range keys to the footer help.
-- [ ] Add ANSI-safe theme functions for start, end, and selected range states.
-- [ ] Keep every rendered line inside the terminal width.
-- [ ] Keep the existing fixed panel height and scrolling behavior.
+- [x] Render a distinct start marker.
+- [x] Render a distinct end marker.
+- [x] Render all rows inside the selected range with one consistent style.
+- [x] Render protected rows as unavailable and include the protection reason.
+- [x] Keep token values and warnings visible during selection.
+- [x] Add range keys to the footer help.
+- [x] Add ANSI-safe theme functions for start, end, and selected range states.
+- [x] Keep every rendered line inside the terminal width.
+- [x] Keep the existing fixed panel height and scrolling behavior.
 
 ### 6. Add the range-summary prompt
 
