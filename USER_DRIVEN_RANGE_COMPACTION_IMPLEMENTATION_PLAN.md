@@ -257,11 +257,11 @@ File: `packages/core/test/panel-vm.test.ts`
 
 File: `packages/tui/test/panel.test.ts`
 
-- [ ] Test start, end, and inside-range rendering.
-- [ ] Test protected-row rendering.
-- [ ] Test range footer help.
-- [ ] Test narrow terminal widths.
-- [ ] Test scrolling with a range that crosses the visible window.
+- [x] Test start, end, and inside-range rendering.
+- [x] Test protected-row rendering.
+- [x] Test range footer help.
+- [x] Test narrow terminal widths.
+- [x] Test scrolling with a range that crosses the visible window.
 
 ### 14. Add extension coverage in existing test files
 
