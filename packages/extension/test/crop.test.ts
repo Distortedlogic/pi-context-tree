@@ -1,6 +1,7 @@
-import { SessionTree, cropCandidates, planCrop, planRemoveTurns } from "@pi-context-tree/core";
+import { SessionTree, cropCandidates, planCrop, planRange, planRemoveTurns } from "@pi-context-tree/core";
 import { describe, expect, it } from "vitest";
 import { applyCropPlan, cropHandler, parseCropFlags } from "../src/crop-cmd.ts";
+import { applyRangeCompressionPlan } from "../src/range-compress.ts";
 import { type FakeWorld, entriesByType, makeFake } from "./fake-pi.ts";
 
 function seedBigSession(w: FakeWorld): { snap1: string; snap2: string } {
@@ -11,6 +12,17 @@ function seedBigSession(w: FakeWorld): { snap1: string; snap2: string } {
 	const snap2 = w.session.toolResult("chrome.snapshot", "S2".repeat(200));
 	w.session.assistant("done");
 	return { snap1, snap2 };
+}
+
+function seedRangeSession(w: FakeWorld) {
+	w.session.user("root");
+	const anchor = w.session.assistant("anchor");
+	const start = w.session.user("selected source question");
+	const end = w.session.assistant("selected source answer");
+	const continuation = w.session.user("continuation question");
+	const leaf = w.session.assistant("continuation answer");
+	const plan = planRange(SessionTree.fromEntries(w.session.entries), leaf, start, end);
+	return { plan, ids: { anchor, start, end, continuation, leaf } };
 }
 
 describe("parseCropFlags", () => {
@@ -211,5 +223,120 @@ describe("applyCropPlan", () => {
 		const cands = cropCandidates(tree, w.session.leaf!);
 		expect(cands.find((c) => c.entryId === snap1)?.protected).toBe(false);
 		expect(cands.find((c) => c.entryId === snap2)?.protected).toBe(true);
+	});
+});
+
+describe("applyRangeCompressionPlan", () => {
+	it("orders navigation before the visible summary and marker", async () => {
+		const w = makeFake();
+		const { plan } = seedRangeSession(w);
+		const before = w.session.entries.length;
+		const events: string[] = [];
+		const navigate = w.ctx.navigateTree;
+		w.ctx.navigateTree = async (target, options) => {
+			events.push("navigate");
+			return navigate(target, options);
+		};
+		const sendMessage = w.pi.sendMessage;
+		w.pi.sendMessage = (message, options) => {
+			events.push("summary");
+			sendMessage(message, options);
+		};
+		const appendEntry = w.pi.appendEntry;
+		w.pi.appendEntry = (customType, data) => {
+			if (customType === "ctree/range-compact") events.push("marker");
+			appendEntry(customType, data);
+		};
+		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
+
+		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "approved range summary",
+		});
+
+		expect(events).toEqual(["navigate", "summary", "marker"]);
+		expect(w.calls.navigate).toEqual([{ target: plan.anchorId, options: { summarize: false } }]);
+		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0];
+		const marker = entriesByType(w.session, "custom", "ctree/range-compact")[0];
+		expect(tail).toBeDefined();
+		expect(marker?.parentId).toBe(tail?.id);
+		expect(w.session.entries.length).toBe(before + 2);
+		expect(plan.selectedEntryIds.every((id) => w.session.entries.some((entry) => entry.id === id))).toBe(true);
+	});
+
+	it("writes nothing when anchor navigation is cancelled", async () => {
+		const w = makeFake();
+		const { plan } = seedRangeSession(w);
+		const before = w.session.entries.length;
+		w.ctx.navigateTree = async () => ({ cancelled: true });
+		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
+
+		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "approved range summary",
+		});
+
+		expect(w.session.entries.length).toBe(before);
+		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+		expect(entriesByType(w.session, "custom", "ctree/range-compact")).toHaveLength(0);
+		expect(w.ui.notes().some((note) => note.includes("navigation"))).toBe(true);
+	});
+
+	it("writes nothing when the source leaf changed", async () => {
+		const w = makeFake();
+		const { plan } = seedRangeSession(w);
+		w.session.user("new leaf after selection");
+		const before = w.session.entries.length;
+		let drafted = false;
+
+		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
+			draft: async () => {
+				drafted = true;
+				return "must not run";
+			},
+		});
+
+		expect(drafted).toBe(false);
+		expect(w.calls.navigate).toHaveLength(0);
+		expect(w.session.entries.length).toBe(before);
+		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+	});
+
+	it("preserves the unchanged continuation after the approved summary", async () => {
+		const w = makeFake();
+		const { plan } = seedRangeSession(w);
+		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
+
+		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "approved range summary",
+		});
+
+		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0] as { content?: string };
+		const content = tail.content ?? "";
+		expect(content).toContain("approved range summary");
+		expect(content).toContain("continuation question");
+		expect(content).toContain("continuation answer");
+		expect(content.indexOf("continuation question")).toBeLessThan(content.indexOf("continuation answer"));
+		expect(content).not.toContain("selected source question");
+		expect(content).not.toContain("selected source answer");
+	});
+
+	it("writes summary-only output when the selected range reaches the leaf", async () => {
+		const w = makeFake();
+		w.session.user("root");
+		w.session.assistant("anchor");
+		const start = w.session.user("selected through leaf");
+		const leaf = w.session.assistant("selected final answer");
+		const plan = planRange(SessionTree.fromEntries(w.session.entries), leaf, start, leaf);
+		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
+
+		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "approved leaf summary",
+		});
+
+		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0] as { content?: string };
+		const content = tail.content ?? "";
+		expect(content).toContain("approved leaf summary");
+		expect(content).not.toContain("unchanged continuation");
+		expect(content).not.toContain("selected through leaf");
+		expect(content).not.toContain("selected final answer");
 	});
 });

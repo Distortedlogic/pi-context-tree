@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { refreshAmbient, resetAmbient } from "../src/ambient.ts";
+import type { CtxLike } from "../src/adapter.ts";
+import { refreshAmbient, registerAmbient, resetAmbient } from "../src/ambient.ts";
 import { makeFake } from "./fake-pi.ts";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI is the point
@@ -99,5 +100,30 @@ describe("refreshAmbient", () => {
 		w.ctx.getContextUsage = () => ({ tokens: 80_000, contextWindow: 200_000, percent: 40 }); // real 40%
 		refreshAmbient(w.pi, w.ctx);
 		expect(w.ui.statuses.get("ctree") ?? "").not.toContain("▲");
+	});
+
+	it("includes /compress in red-band guidance", () => {
+		const w = makeFake();
+		w.session.user("hi");
+		w.ctx.getContextUsage = () => ({ tokens: 20_000, contextWindow: 200_000, percent: 10 });
+		refreshAmbient(w.pi, w.ctx);
+		w.ctx.getContextUsage = () => ({ tokens: 82_000, contextWindow: 200_000, percent: 41 });
+		refreshAmbient(w.pi, w.ctx);
+		expect(w.ui.notesOf("warning").some((note) => note.includes("/compress"))).toBe(true);
+	});
+
+	it("includes /compress in the built-in /compact warning", () => {
+		const w = makeFake();
+		const handlers = new Map<string, (event: unknown, ctx: CtxLike) => unknown>();
+		w.pi.on = (event, handler) => {
+			handlers.set(event, handler);
+		};
+		registerAmbient(w.pi);
+
+		handlers.get("session_before_compact")?.({}, w.ctx);
+
+		expect(w.ui.notesOf("warning").some((note) => note.includes("/compact") && note.includes("/compress"))).toBe(
+			true,
+		);
 	});
 });

@@ -267,30 +267,30 @@ File: `packages/tui/test/panel.test.ts`
 
 File: `packages/extension/test/index.test.ts`
 
-- [ ] Test `/compress` registration.
+- [x] Test `/compress` registration.
 
 File: `packages/extension/test/panel-cmd.test.ts`
 
-- [ ] Test range action dispatch.
-- [ ] Test command-context requirements.
-- [ ] Test source-leaf revalidation.
+- [x] Test range action dispatch.
+- [x] Test command-context requirements.
+- [x] Test source-leaf revalidation.
 
 File: `packages/extension/test/crop.test.ts`
 
-- [ ] Test range apply ordering: navigate, summary message, marker.
-- [ ] Test no writes after cancelled navigation.
-- [ ] Test no writes after changed leaf.
-- [ ] Test continuation preservation.
-- [ ] Test summary-only output when the range reaches the leaf.
+- [x] Test range apply ordering: navigate, summary message, marker.
+- [x] Test no writes after cancelled navigation.
+- [x] Test no writes after changed leaf.
+- [x] Test continuation preservation.
+- [x] Test summary-only output when the range reaches the leaf.
 
 File: `packages/extension/test/undo.test.ts`
 
-- [ ] Test restoration of `sourceLeafId`.
-- [ ] Test ordering against later crop, merge, and branch mutations.
+- [x] Test restoration of `sourceLeafId`.
+- [x] Test ordering against later crop, merge, and branch mutations.
 
 File: `packages/extension/test/ambient.test.ts`
 
-- [ ] Test updated `/compress` guidance.
+- [x] Test updated `/compress` guidance.
 
 ### 15. Add real-session and real-TUI coverage
 

@@ -3,9 +3,37 @@ import type { Deps } from "../src/adapter.ts";
 import { branchHandler } from "../src/branch.ts";
 import { mergeHandler } from "../src/merge.ts";
 import { undoHandler } from "../src/undo.ts";
-import { makeFake } from "./fake-pi.ts";
+import { type FakeWorld, makeFake } from "./fake-pi.ts";
 
 const deps: Deps = { draft: async () => "## Decision: fix-flaky-test\n**Outcome:** done.\n" };
+
+function seedRangeMutation(w: FakeWorld): { sourceLeafId: string; markerId: string } {
+	const anchorId = w.session.user("range anchor");
+	const sourceLeafId = w.session.assistant("original selected range");
+	const data = {
+		v: 1 as const,
+		sourceLeafId,
+		anchorId,
+		startEntryId: sourceLeafId,
+		endEntryId: sourceLeafId,
+		selectedEntryIds: [sourceLeafId],
+		selectedEstTokens: 10,
+		summaryEstTokens: 3,
+		reclaimedEstTokens: 7,
+		summaryModel: "anthropic/opus-4.8",
+		sourceSha8: "abcd1234",
+	};
+	w.session.at(anchorId);
+	w.session.append({
+		type: "custom_message",
+		customType: "ctree/range-tail",
+		content: "approved summary",
+		display: true,
+		details: data,
+	});
+	const markerId = w.session.append({ type: "custom", customType: "ctree/range-compact", data });
+	return { sourceLeafId, markerId };
+}
 
 describe("/undo last mutation (append-only, last-only)", () => {
 	it("re-opens a squashed branch at its pre-merge leaf, deleting nothing", async () => {
@@ -47,6 +75,58 @@ describe("/undo last mutation (append-only, last-only)", () => {
 		await undoHandler(w.pi, w.ctx);
 		expect(w.calls.navigate.at(-1)?.target).toBe(preCrop);
 	});
+
+	it("restores the source leaf for a compressed message range", async () => {
+		const w = makeFake();
+		const { sourceLeafId, markerId } = seedRangeMutation(w);
+		const count = w.session.entries.length;
+
+		w.ui.confirmQueue.push(true);
+		await undoHandler(w.pi, w.ctx);
+
+		expect(w.calls.navigate.at(-1)).toEqual({ target: sourceLeafId, options: { summarize: false } });
+		expect(w.session.entries.length).toBe(count);
+		expect(w.session.entries.some((entry) => entry.id === markerId)).toBe(true);
+		expect(w.ui.notes().some((note) => note.includes("restore compressed message range"))).toBe(true);
+	});
+
+	it.each(["crop", "merge", "branch"] as const)(
+		"prefers a later %s mutation over an earlier range compaction",
+		async (mutation) => {
+			const w = makeFake();
+			const { markerId } = seedRangeMutation(w);
+			if (mutation === "crop") {
+				const stub = { entryId: "source", tool: "read", estTokens: 20, sha8: "12345678" };
+				w.session.append({
+					type: "custom_message",
+					customType: "ctree/crop-tail",
+					content: "crop tail",
+					details: { v: 1, sourceLeafId: markerId, stubbed: [stub] },
+				});
+				w.session.append({
+					type: "custom",
+					customType: "ctree/crop",
+					data: { v: 1, sourceLeafId: markerId, stubbed: [stub] },
+				});
+			} else if (mutation === "merge") {
+				w.session.append({
+					type: "custom",
+					customType: "ctree/close",
+					data: { v: 1, forkEntryId: "later-fork", status: "squashed", prevLeafId: markerId },
+				});
+			} else {
+				w.session.append({
+					type: "custom",
+					customType: "ctree/fork",
+					data: { v: 1, name: "later-branch", parentEntryId: markerId, createdAt: 1, status: "open" },
+				});
+			}
+
+			w.ui.confirmQueue.push(true);
+			await undoHandler(w.pi, w.ctx);
+			expect(w.calls.navigate.at(-1)?.target).toBe(markerId);
+		},
+	);
 
 	it("undoes a /branch back to where you branched", async () => {
 		const w = makeFake();
