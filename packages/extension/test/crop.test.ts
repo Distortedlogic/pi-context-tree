@@ -244,6 +244,7 @@ describe("applyCropPlan", () => {
 
 interface NativeSelectorDriver {
 	liveTree: never;
+	getTreeCalls: { count: number };
 	customOptions: unknown[];
 	confirmations: { title: string; message: string }[];
 }
@@ -253,8 +254,12 @@ function driveNativeSelectors(w: FakeWorld, selections: (string | undefined)[]):
 	nativeSelectorHarness.selections.length = 0;
 	nativeSelectorHarness.selections.push(...selections);
 
-	const liveTree = [{ id: "live-native-tree" }] as never;
-	w.ctx.sessionManager.getTree = (() => liveTree) as typeof w.ctx.sessionManager.getTree;
+	const liveTree = w.session.entries.map((entry) => ({ entry, children: [] })) as never;
+	const getTreeCalls = { count: 0 };
+	w.ctx.sessionManager.getTree = (() => {
+		getTreeCalls.count += 1;
+		return liveTree;
+	}) as typeof w.ctx.sessionManager.getTree;
 	w.ctx.sessionManager.getEntry = ((entryId: string) =>
 		w.session.entries.find((entry) => entry.id === entryId)) as typeof w.ctx.sessionManager.getEntry;
 	w.ctx.sessionManager.getBranch = (() => w.session.entries) as typeof w.ctx.sessionManager.getBranch;
@@ -280,7 +285,7 @@ function driveNativeSelectors(w: FakeWorld, selections: (string | undefined)[]):
 		confirmations.push({ title, message });
 		return false;
 	};
-	return { liveTree, customOptions, confirmations };
+	return { liveTree, getTreeCalls, customOptions, confirmations };
 }
 
 function expectNoRangeWrites(w: FakeWorld): void {
@@ -308,8 +313,9 @@ describe("/compress native two-pass selector", () => {
 		const drafts = await runNativeCompress(w);
 
 		expect(nativeSelectorHarness.calls).toHaveLength(2);
-		expect(nativeSelectorHarness.calls[0]?.[0]).toBe(driver.liveTree);
-		expect(nativeSelectorHarness.calls[1]?.[0]).toBe(driver.liveTree);
+		expect(driver.getTreeCalls.count).toBe(2);
+		expect(nativeSelectorHarness.calls[0]?.[0]).not.toBe(driver.liveTree);
+		expect(nativeSelectorHarness.calls[1]?.[0]).toEqual(nativeSelectorHarness.calls[0]?.[0]);
 		expect(nativeSelectorHarness.calls[0]?.[1]).toBe(ids.leaf);
 		expect(nativeSelectorHarness.calls[0]?.[6]).toBe(ids.leaf);
 		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(ids.start);
@@ -361,6 +367,10 @@ describe("/compress native two-pass selector", () => {
 		await runNativeCompress(w);
 
 		expect(nativeSelectorHarness.calls).toHaveLength(3);
+		const visibleIds = (nativeSelectorHarness.calls[0]?.[0] as { entry: { id: string } }[]).map(
+			(node) => node.entry.id,
+		);
+		expect(visibleIds).not.toContain(offPath);
 		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(offPath);
 		expect(w.ui.notes().some((note) => /off-path|active context/.test(note))).toBe(true);
 		expect(w.calls.navigate).toHaveLength(0);
