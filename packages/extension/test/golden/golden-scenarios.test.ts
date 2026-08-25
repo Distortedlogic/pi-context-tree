@@ -12,9 +12,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHARS_PER_TOKEN, SessionTree, planRange, renderRangeTail } from "@pi-context-tree/core";
+import { SessionTree, planRange, renderRangeTail } from "@pi-context-tree/core";
 import { SessionBuilder } from "@pi-context-tree/core/testkit";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildRangeCompactData } from "../../src/range-compress.ts";
 import { expectGolden } from "./golden.ts";
 import { MockOpenAI } from "./mock-openai.ts";
 import { normalizeSession } from "./normalize.ts";
@@ -306,20 +307,7 @@ describe.skipIf(!PI)("rpc goldens", () => {
 				const plan = planRange(SessionTree.fromEntries(original.entries), sourceLeafId, start, end);
 				selectedIds = [...plan.selectedEntryIds];
 				const summary = "Approved summary: cache invalidation failed because a stale key survived.";
-				const summaryEstTokens = Math.ceil(summary.length / CHARS_PER_TOKEN);
-				const details = {
-					v: 1 as const,
-					sourceLeafId,
-					anchorId: plan.anchorId,
-					startEntryId: plan.startEntryId,
-					endEntryId: plan.endEntryId,
-					selectedEntryIds: [...plan.selectedEntryIds],
-					selectedEstTokens: plan.selectedEstTokens,
-					summaryEstTokens,
-					reclaimedEstTokens: plan.selectedEstTokens - summaryEstTokens,
-					summaryModel: "mock/trunk-1",
-					sourceSha8: plan.sourceSha8,
-				};
+				const details = buildRangeCompactData(plan, summary, "mock/trunk-1");
 				b.at(plan.anchorId);
 				tailId = b.customMessage("ctree/range-tail", renderRangeTail(plan, summary), true, details);
 				markerId = b.custom("ctree/range-compact", details);

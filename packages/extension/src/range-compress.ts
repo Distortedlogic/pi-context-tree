@@ -68,6 +68,27 @@ export function resolveRangeEndpoint(
 	return endpoint;
 }
 
+export function buildRangeCompactData(
+	plan: RangePlan,
+	approvedSummary: string,
+	summaryModel: string,
+): CtreeRangeCompactData {
+	const summaryEstTokens = estimateTextTokens(approvedSummary);
+	return {
+		v: 1,
+		sourceLeafId: plan.sourceLeafId,
+		anchorId: plan.anchorId,
+		startEntryId: plan.startEntryId,
+		endEntryId: plan.endEntryId,
+		selectedEntryIds: [...plan.selectedEntryIds],
+		selectedEstTokens: plan.selectedEstTokens,
+		summaryEstTokens,
+		reclaimedEstTokens: plan.selectedEstTokens - summaryEstTokens,
+		summaryModel,
+		sourceSha8: plan.sourceSha8,
+	};
+}
+
 /** Apply a reviewed panel plan. The session is revalidated before every write. */
 export async function applyRangeCompressionPlan(
 	pi: PiLike,
@@ -127,21 +148,7 @@ export async function applyRangeCompressionPlan(
 	}
 
 	const approvedSummary = reviewed.trim();
-	const summaryEstTokens = estimateTextTokens(approvedSummary);
-	const reclaimedEstTokens = plan.selectedEstTokens - summaryEstTokens;
-	const details: CtreeRangeCompactData = {
-		v: 1,
-		sourceLeafId: plan.sourceLeafId,
-		anchorId: plan.anchorId,
-		startEntryId: plan.startEntryId,
-		endEntryId: plan.endEntryId,
-		selectedEntryIds: [...plan.selectedEntryIds],
-		selectedEstTokens: plan.selectedEstTokens,
-		summaryEstTokens,
-		reclaimedEstTokens,
-		summaryModel,
-		sourceSha8: plan.sourceSha8,
-	};
+	const details = buildRangeCompactData(plan, approvedSummary, summaryModel);
 	const rebuilt = renderRangeTail(plan, approvedSummary);
 
 	if (leafIdOf(ctx) !== plan.sourceLeafId) {
@@ -166,7 +173,7 @@ export async function applyRangeCompressionPlan(
 	pi.appendEntry(CTREE_RANGE_COMPACT, details);
 	refreshAmbient(pi, ctx);
 	ctx.ui.notify(
-		`compressed range: selected ~${fmtTokens(plan.selectedEstTokens)} · summary ~${fmtTokens(summaryEstTokens)} · reclaimed ~${fmtTokens(reclaimedEstTokens)} tokens · originals kept at ${plan.sourceLeafId}`,
+		`compressed range: selected ~${fmtTokens(plan.selectedEstTokens)} · summary ~${fmtTokens(details.summaryEstTokens)} · reclaimed ~${fmtTokens(details.reclaimedEstTokens)} tokens · originals kept at ${plan.sourceLeafId}`,
 		"info",
 	);
 }

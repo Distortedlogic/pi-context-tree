@@ -176,19 +176,19 @@ describe.skipIf(!PI || !EXPECT)("real pi TUI in a PTY (mockup keymap walk)", () 
 				"pump 6",
 				'send "/compress preserve exact identifiers\\r"',
 				"pump 4",
-				'send "j"',
+				'send "k"',
 				"pump 1",
-				'send "j"',
+				'send "k"',
 				"pump 1",
-				'send "j"', // inside-range user row
+				'send "k"', // native tree: inside-range user row
 				"pump 1",
-				'send " "', // start
+				'send "\\r"', // native Enter selects the start
 				"pump 2",
-				'send "j"', // inside-range assistant row
+				'send "j"', // second native tree: inside-range assistant row
 				"pump 1",
-				'send " "', // end
+				'send "\\r"', // native Enter selects the end
 				"pump 2",
-				'send "\\r"', // confirm range and request the draft
+				'send "y"', // accept the standard range confirmation
 				"pump 6",
 				'send "\\x13"', // Ctrl+S: accept the required editor review
 				"pump 6",
@@ -215,9 +215,8 @@ describe.skipIf(!PI || !EXPECT)("real pi TUI in a PTY (mockup keymap walk)", () 
 
 		const raw = readFileSync(capture, "utf8");
 		const tail = `\n--- capture tail ---\n${raw.slice(-2500)}`;
-		expect(raw, `range screen never painted${tail}`).toContain("COMPRESS RANGE");
-		expect(raw, `start marker never painted${tail}`).toContain("[S]");
-		expect(raw, `end marker never painted${tail}`).toContain("[E]");
+		expect(raw, `native session tree never painted${tail}`).toContain("Session Tree");
+		expect(raw, `native branch connectors never painted${tail}`).toMatch(/[├└]─/);
 		expect(raw, `range was not applied${tail}`).toContain("compressed range:");
 		expect(raw, `Pi did not return to a valid panel${tail}`).toContain("TRUNK + BRANCHES");
 		expect(raw, `Pi crashed during /compress${tail}`).not.toContain("uncaughtException");
