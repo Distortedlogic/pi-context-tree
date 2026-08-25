@@ -1,8 +1,24 @@
 import { SessionTree, cropCandidates, planCrop, planRange, planRemoveTurns } from "@pi-context-tree/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { applyCropPlan, cropHandler, parseCropFlags } from "../src/crop-cmd.ts";
-import { applyRangeCompressionPlan } from "../src/range-compress.ts";
+import { applyRangeCompressionPlan, rangeCompressHandler } from "../src/range-compress.ts";
 import { type FakeWorld, entriesByType, makeFake } from "./fake-pi.ts";
+
+const nativeSelectorHarness = vi.hoisted(() => ({
+	calls: [] as unknown[][],
+	selections: [] as (string | undefined)[],
+}));
+
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+	TreeSelectorComponent: class {
+		constructor(...args: unknown[]) {
+			nativeSelectorHarness.calls.push(args);
+			const selected = nativeSelectorHarness.selections.shift();
+			if (selected === undefined) (args[4] as () => void)();
+			else (args[3] as (entryId: string) => void)(selected);
+		}
+	},
+}));
 
 function seedBigSession(w: FakeWorld): { snap1: string; snap2: string } {
 	w.session.user("audit my tabs");
@@ -223,6 +239,186 @@ describe("applyCropPlan", () => {
 		const cands = cropCandidates(tree, w.session.leaf!);
 		expect(cands.find((c) => c.entryId === snap1)?.protected).toBe(false);
 		expect(cands.find((c) => c.entryId === snap2)?.protected).toBe(true);
+	});
+});
+
+interface NativeSelectorDriver {
+	liveTree: never;
+	customOptions: unknown[];
+	confirmations: { title: string; message: string }[];
+}
+
+function driveNativeSelectors(w: FakeWorld, selections: (string | undefined)[]): NativeSelectorDriver {
+	nativeSelectorHarness.calls.length = 0;
+	nativeSelectorHarness.selections.length = 0;
+	nativeSelectorHarness.selections.push(...selections);
+
+	const liveTree = [{ id: "live-native-tree" }] as never;
+	w.ctx.sessionManager.getTree = (() => liveTree) as typeof w.ctx.sessionManager.getTree;
+	w.ctx.sessionManager.getEntry = ((entryId: string) =>
+		w.session.entries.find((entry) => entry.id === entryId)) as typeof w.ctx.sessionManager.getEntry;
+	w.ctx.sessionManager.getBranch = (() => w.session.entries) as typeof w.ctx.sessionManager.getBranch;
+
+	const customOptions: unknown[] = [];
+	w.ui.custom = async <T>(factory: unknown, options?: unknown): Promise<T> => {
+		customOptions.push(options);
+		let result: T | undefined;
+		const done = (value: unknown): void => {
+			result = value as T;
+		};
+		(factory as (tui: unknown, theme: unknown, keybindings: unknown, done: (value: unknown) => void) => unknown)(
+			{ terminal: { rows: 42 } },
+			undefined,
+			undefined,
+			done,
+		);
+		return result as T;
+	};
+
+	const confirmations: { title: string; message: string }[] = [];
+	w.ctx.ui.confirm = async (title, message) => {
+		confirmations.push({ title, message });
+		return false;
+	};
+	return { liveTree, customOptions, confirmations };
+}
+
+function expectNoRangeWrites(w: FakeWorld): void {
+	expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+	expect(entriesByType(w.session, "custom", "ctree/range-compact")).toHaveLength(0);
+}
+
+async function runNativeCompress(w: FakeWorld): Promise<number> {
+	let drafts = 0;
+	await rangeCompressHandler(w.pi, w.ctx, "", {
+		draft: async () => {
+			drafts += 1;
+			return "unused summary";
+		},
+	});
+	return drafts;
+}
+
+describe("/compress native two-pass selector", () => {
+	it("passes the live tree to both selectors and confirms normalized labels and tokens without navigation", async () => {
+		const w = makeFake();
+		const { ids } = seedRangeSession(w);
+		const driver = driveNativeSelectors(w, [ids.start, ids.end]);
+
+		const drafts = await runNativeCompress(w);
+
+		expect(nativeSelectorHarness.calls).toHaveLength(2);
+		expect(nativeSelectorHarness.calls[0]?.[0]).toBe(driver.liveTree);
+		expect(nativeSelectorHarness.calls[1]?.[0]).toBe(driver.liveTree);
+		expect(nativeSelectorHarness.calls[0]?.[1]).toBe(ids.leaf);
+		expect(nativeSelectorHarness.calls[0]?.[6]).toBe(ids.leaf);
+		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(ids.start);
+		expect(nativeSelectorHarness.calls.map((call) => call[7])).toEqual(["default", "default"]);
+		expect(driver.customOptions).toEqual([undefined, undefined]);
+		expect(w.calls.navigate).toHaveLength(0);
+		expect(driver.confirmations).toHaveLength(1);
+		expect(driver.confirmations[0]?.message).toContain("selected source question");
+		expect(driver.confirmations[0]?.message).toContain("selected source answer");
+		expect(driver.confirmations[0]?.message).toMatch(/2 entries · ~[0-9.]+k? tokens/);
+		expect(drafts).toBe(0);
+		expectNoRangeWrites(w);
+	});
+
+	it("writes nothing when the first selector is cancelled", async () => {
+		const w = makeFake();
+		seedRangeSession(w);
+		driveNativeSelectors(w, [undefined]);
+
+		expect(await runNativeCompress(w)).toBe(0);
+		expect(nativeSelectorHarness.calls).toHaveLength(1);
+		expect(w.calls.navigate).toHaveLength(0);
+		expectNoRangeWrites(w);
+	});
+
+	it("writes nothing when the second selector is cancelled", async () => {
+		const w = makeFake();
+		const { ids } = seedRangeSession(w);
+		driveNativeSelectors(w, [ids.start, undefined]);
+
+		expect(await runNativeCompress(w)).toBe(0);
+		expect(nativeSelectorHarness.calls).toHaveLength(2);
+		expect(w.calls.navigate).toHaveLength(0);
+		expectNoRangeWrites(w);
+	});
+
+	it("shows an off-path notice and reopens the first selector", async () => {
+		const w = makeFake();
+		w.session.user("root");
+		const anchor = w.session.assistant("anchor");
+		const offPath = w.session.user("inactive branch message");
+		w.session.assistant("inactive branch answer");
+		w.session.at(anchor);
+		const start = w.session.user("selected start");
+		const end = w.session.assistant("selected end");
+		w.session.assistant("continuation");
+		driveNativeSelectors(w, [offPath, start, end]);
+
+		await runNativeCompress(w);
+
+		expect(nativeSelectorHarness.calls).toHaveLength(3);
+		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(offPath);
+		expect(w.ui.notes().some((note) => /off-path|active context/.test(note))).toBe(true);
+		expect(w.calls.navigate).toHaveLength(0);
+		expectNoRangeWrites(w);
+	});
+
+	it("shows a protected decision notice and reopens the first selector", async () => {
+		const w = makeFake();
+		w.session.user("root");
+		w.session.assistant("anchor");
+		const decision = w.session.append({
+			type: "custom_message",
+			customType: "ctree/decision",
+			content: "## Decision: protected",
+			display: true,
+		});
+		const start = w.session.user("selected start");
+		const end = w.session.assistant("selected end");
+		w.session.assistant("continuation");
+		driveNativeSelectors(w, [decision, start, end]);
+
+		await runNativeCompress(w);
+
+		expect(nativeSelectorHarness.calls).toHaveLength(3);
+		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(decision);
+		expect(w.ui.notes().some((note) => note.includes("decision record"))).toBe(true);
+		expect(w.calls.navigate).toHaveLength(0);
+		expectNoRangeWrites(w);
+	});
+
+	it("expands a selected tool-result member to the complete group boundaries", async () => {
+		const w = makeFake();
+		w.session.user("root");
+		w.session.assistant("anchor");
+		const call = w.session.message({
+			role: "assistant",
+			content: [{ type: "toolCall", id: "call-1", name: "read_file", arguments: { path: "src/a.ts" } }],
+			provider: "anthropic",
+			model: "opus-4.8",
+		});
+		const result = w.session.message({
+			role: "toolResult",
+			toolCallId: "call-1",
+			toolName: "read_file",
+			content: [{ type: "text", text: "file body" }],
+			isError: false,
+		});
+		w.session.assistant("continuation");
+		const driver = driveNativeSelectors(w, [result, call]);
+
+		await runNativeCompress(w);
+
+		expect(nativeSelectorHarness.calls).toHaveLength(2);
+		expect(nativeSelectorHarness.calls[1]?.[6]).toBe(call);
+		expect(driver.confirmations[0]?.message).toMatch(/2 entries/);
+		expect(driver.confirmations[0]?.message).toContain("read_file");
+		expect(w.calls.navigate).toHaveLength(0);
+		expectNoRangeWrites(w);
 	});
 });
 
