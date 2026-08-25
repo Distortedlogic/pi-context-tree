@@ -38,6 +38,8 @@ export class ContextPanel {
 		this.theme = opts.theme ?? defaultTheme;
 	}
 
+	invalidate(): void {}
+
 	/** exposed for tests and hosts */
 	get viewModel(): PanelVm {
 		return this.vm;

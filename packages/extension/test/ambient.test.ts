@@ -116,7 +116,7 @@ describe("refreshAmbient", () => {
 		const w = makeFake();
 		const handlers = new Map<string, (event: unknown, ctx: CtxLike) => unknown>();
 		w.pi.on = (event, handler) => {
-			handlers.set(event, handler);
+			handlers.set(event, handler as (event: unknown, ctx: CtxLike) => unknown);
 		};
 		registerAmbient(w.pi);
 

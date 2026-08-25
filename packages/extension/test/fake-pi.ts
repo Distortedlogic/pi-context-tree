@@ -58,7 +58,7 @@ export class FakeSession {
 	}
 }
 
-export class FakeUi implements UiLike {
+export class FakeUi {
 	notifications: { msg: string; type?: string }[] = [];
 	selectQueue: (string | undefined)[] = [];
 	editorQueue: (string | undefined)[] = [];
@@ -120,10 +120,25 @@ export interface FakeWorld {
 	shortcuts: Map<string, (ctx: CtxLike) => Promise<void> | void>;
 }
 
+function fakeModel(provider: string, id: string, contextWindow: number): ModelLike {
+	return {
+		provider,
+		id,
+		name: id,
+		api: "openai-completions",
+		baseUrl: "http://127.0.0.1:9/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow,
+		maxTokens: 8192,
+	} as ModelLike;
+}
+
 const KNOWN_MODELS: ModelLike[] = [
-	{ provider: "anthropic", id: "opus-4.8", contextWindow: 200_000 },
-	{ provider: "anthropic", id: "haiku-4.5", contextWindow: 200_000 },
-	{ provider: "openai", id: "gpt-5.2", contextWindow: 400_000 },
+	fakeModel("anthropic", "opus-4.8", 200_000),
+	fakeModel("anthropic", "haiku-4.5", 200_000),
+	fakeModel("openai", "gpt-5.2", 400_000),
 ];
 
 export function makeFake(): FakeWorld {
@@ -137,10 +152,13 @@ export function makeFake(): FakeWorld {
 
 	const pi: PiLike = {
 		registerCommand: (name, opts) => {
-			commands.set(name, opts.handler);
-			completions.set(name, opts.getArgumentCompletions);
+			commands.set(name, (args, ctx) => opts.handler(args, ctx as never));
+			completions.set(
+				name,
+				opts.getArgumentCompletions as ((prefix: string) => { value: string; label?: string }[] | null) | undefined,
+			);
 		},
-		registerShortcut: (keyId, opts) => shortcuts.set(keyId, opts.handler),
+		registerShortcut: (keyId, opts) => shortcuts.set(keyId, (ctx) => opts.handler(ctx as never)),
 		on: () => {},
 		sendMessage: (m) =>
 			session.append({
@@ -161,15 +179,21 @@ export function makeFake(): FakeWorld {
 	};
 
 	const ctx: CmdCtxLike = {
-		ui,
-		sessionManager: { getEntries: () => session.entries, getLeafId: () => session.leaf },
+		ui: ui as unknown as UiLike,
+		sessionManager: {
+			getEntries: () => session.entries as never,
+			getTree: () => [] as never,
+			getBranch: () => session.entries as never,
+			getEntry: (entryId) => session.entries.find((entry) => entry.id === entryId) as never,
+			getLeafId: () => session.leaf,
+		},
 		get model() {
 			return currentModel;
 		},
 		modelRegistry: {
 			find: (provider, id) => KNOWN_MODELS.find((m) => m.provider === provider && m.id === id),
 			getAll: () => KNOWN_MODELS,
-			getApiKeyAndHeaders: async () => ({ ok: false, error: "no key in tests" }),
+			complete: async () => ({ content: [] }) as never,
 		},
 		waitForIdle: async () => {},
 		navigateTree: async (target, options) => {

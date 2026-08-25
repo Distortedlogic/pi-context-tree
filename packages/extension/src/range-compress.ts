@@ -1,10 +1,10 @@
 import { TreeSelectorComponent } from "@earendil-works/pi-coding-agent";
 import {
-	estimateTextTokens,
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
 	type CtreeRangeCompactData,
 	type RangePlan,
+	estimateTextTokens,
 	fmtTokens,
 	planRange,
 	rangeCandidates,

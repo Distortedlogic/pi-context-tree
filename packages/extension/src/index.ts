@@ -8,7 +8,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { CTREE_DECISION, type CtreeDecisionDetails } from "@pi-context-tree/core";
+import { CTREE_DECISION, type CtreeDecisionDetails, textOfContent } from "@pi-context-tree/core";
 import { decisionCardLines } from "@pi-context-tree/tui";
 import type { Deps, PiLike } from "./adapter.ts";
 import { registerAmbient } from "./ambient.ts";
@@ -35,12 +35,13 @@ export default function piContextTree(api: ExtensionAPI): void {
 
 	// ◆ decision records render as mockup-style cards in the chat (F7 polish)
 	pi.registerMessageRenderer?.<CtreeDecisionDetails>(CTREE_DECISION, (message, options) => ({
+		invalidate: () => {},
 		render: (width: number) =>
 			decisionCardLines(
 				{
 					branchName: message.details?.branchName,
 					dateIso: message.timestamp ? new Date(message.timestamp).toISOString().slice(0, 10) : undefined,
-					content: message.content,
+					content: textOfContent(message.content),
 					siblings: message.details?.siblings,
 					expanded: options.expanded,
 				},

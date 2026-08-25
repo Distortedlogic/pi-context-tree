@@ -35,10 +35,7 @@ export type CtxLike = Pick<ExtensionContext, "model"> &
 /** Command-capable context (pi's ExtensionCommandContext). */
 export type CmdCtxLike = CtxLike & Pick<ExtensionCommandContext, "waitForIdle" | "navigateTree">;
 
-export type PiLike = Pick<
-	ExtensionAPI,
-	"registerCommand" | "sendMessage" | "appendEntry" | "setLabel" | "setModel"
-> &
+export type PiLike = Pick<ExtensionAPI, "registerCommand" | "sendMessage" | "appendEntry" | "setLabel" | "setModel"> &
 	Partial<Pick<ExtensionAPI, "registerShortcut" | "on" | "getSessionName" | "registerMessageRenderer">>;
 
 /** Drafting dependency — real implementation calls the branch model via pi-ai. */
