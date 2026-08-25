@@ -22,12 +22,13 @@
 | Footer / title | `ctx.ui.setFooter(factory)` (gets `footerData.getGitBranch()` etc.); `ctx.ui.setTitle(string)`; `ctx.ui.setStatus(key, text)` | `types.ts:176-186`; examples `custom-footer.ts`, `titlebar-spinner.ts` |
 | Dialogs | `ctx.ui.select / confirm / input / editor(title, prefill)` (multi-line modal editor), `ctx.ui.notify` | `types.ts:124-275` |
 | Read session tree | `ctx.sessionManager` (read-only): `getEntries / getBranch / getTree / getChildren / getEntry / getLabel / buildSessionContext` | `extensions/types.ts:310`, ReadonlySessionManager |
+| Native session-tree selection | Pi 0.84.3 publicly exports `TreeSelectorComponent` from `@earendil-works/pi-coding-agent`; pass `ctx.sessionManager.getTree()` directly with `getLeafId()`, terminal height, native callbacks, initial selection, and filter mode `"default"` | public package export and `tree-selector.ts` |
 | Summarize-on-leave | three-choice selector; skip via `settings.branchSummary.skipPrompt`; writes `BranchSummaryEntry {fromId, summary}`, which DOES enter context | `interactive-mode.ts:4450-4502`; `session-manager.ts:80-88` |
 | Compaction | `CompactionEntry {summary, firstKeptEntryId, tokensBefore}` — context = summary + everything **from `firstKeptEntryId` forward**. **Prefix-only; cannot stub a single mid-history entry** | `session-manager.ts:69-78, 400-423`; `compaction.ts:121-125, 219-222` |
 | RPC mode (testing) | `pi --mode rpc`, JSONL stdin/stdout; extension commands invokable via `{"type":"prompt","message":"/cmd args"}`; `get_commands` lists them | `docs/rpc.md` |
 | Token estimation | pi's own heuristic is chars/4 (`ESTIMATED_IMAGE_CHARS=4800` per image) — matches our core estimator | `compaction.ts:250-290` |
 
-**Hard absences (0.84.3):** no extension API appends `message`-type entries; no API removes/edits individual entries; the internal `TreeSelectorComponent` used by `/tree` is not exported (copy its flatten-pattern, don't import).
+**Hard absences (0.84.3):** no extension API appends `message`-type entries; no API removes or edits individual entries. `TreeSelectorComponent` is public and must be imported from the package root, not through a deep import.
 
 ---
 
@@ -35,7 +36,7 @@
 
 - **Language/runtime:** TypeScript 5.x, ESM only, Node ≥ 22.19 (pi-tui's floor). **Bun considered and rejected:** `extension`/`tui` run inside pi's Node process (extensions loaded as TS source via jiti — `loader.ts:15` — so Bun APIs would crash there, and no build step is needed); `pitree` could run on bun but pi users already have Node ≥22.19, its startup is parse-bound not boot-bound, and it shares code with the in-pi packages; pi-mono itself is npm + vitest/`node --test` + biome, and matching that toolchain keeps the VirtualTerminal harness and upstream PRs frictionless. Revisit only if `pitree` ever wants `bun build --compile` single-binary distribution.
 - **Workspace:** npm workspaces, `packages/{core,tui,extension,pitree,dashboard}` per TRD §1 — confirmed viable, no changes.
-- **Deps:** `@earendil-works/pi-tui@0.84.3` (published, standalone-capable: `TUI` + `ProcessTerminal` + components). Extension package type-imports `@earendil-works/pi-coding-agent@0.84.3`. LLM drafting reuses `@earendil-works/ai` (`completeSimple` — same path pi's branch-summarization takes; verify export name at impl).
+- **Deps:** `@earendil-works/pi-tui@0.84.3` (published, standalone-capable: `TUI` + `ProcessTerminal` + components). The extension imports the public `TreeSelectorComponent` and context types from `@earendil-works/pi-coding-agent@0.84.3`. LLM drafting uses Pi's public model registry.
 - **Test:** vitest everywhere; pi-tui's **`VirtualTerminal`** (xterm.js headless) pattern for TUI tests — instantiate `TUI(vterm)`, `vterm.sendInput(...)`, assert on viewport lines (copy the harness from `packages/tui/test/virtual-terminal.ts`, it is not exported).
 - **Lint/format:** biome (pi-mono uses it; zero-config familiarity for upstream PRs).
 
@@ -119,20 +120,21 @@ No leaf movement: the fork entry itself is the label point; subsequent turns are
 
 ### `/compress [instructions]` — reviewed active-range compaction
 
-1. `ctx.waitForIdle()` and derive the current `sourceLeafId`.
-2. Open `ContextPanel` with `initialView:"range"`. The full tree remains visible, but candidate groups come only from `contextSlice(tree, sourceLeafId)`.
-3. Protect off-path and structural entries, decision records, an incomplete current user turn, and incomplete assistant tool-call groups. An assistant tool call and all related results are one atomic group.
-4. Normalize the two endpoints. `planRange()` finds `anchorId`, selected entries, unchanged continuation, selected token estimate, complete selected serialization, and `sourceSha8`.
-5. `draftRangeSummary(deps.draft, ctx, selectedSerialized, instructions)` uses the current model. It sends the complete selected source without per-entry truncation. It rejects input that cannot fit beside the output reserve.
-6. Open `ctx.ui.editor()` with the draft. Empty or cancelled review stops with no writes.
-7. Recheck `sourceLeafId`, recompute the plan from fresh session state, and compare selected IDs and source hash.
-8. Render one range-tail body: short header → approved summary → unchanged serialized continuation. Selected source text is not copied.
-9. Apply in this exact order:
+1. `ctx.waitForIdle()` and read the current `sourceLeafId` from `ctx.sessionManager.getLeafId()`.
+2. Open the public `TreeSelectorComponent` with `ctx.sessionManager.getTree()` passed directly, the current leaf, `tui.terminal.rows`, native select/cancel callbacks, no label-change callback, the current leaf as `initialSelectedId`, and filter mode `"default"`. Do not navigate.
+3. Native Enter returns the first ID. Resolve it to a canonical safe-group start. Invalid off-path, structural, decision-record, incomplete-turn, or incomplete-tool-group selections show a notice and reopen this selector. Native cancel stops with no write.
+4. Open a second `TreeSelectorComponent`, again from the live tree and without navigation, with the normalized first ID as `initialSelectedId`. Native Enter returns the second ID and resolves it to the canonical safe-group end. Invalid selections reopen the second selector; cancel stops.
+5. Build the final normalized `planRange()`, then use `ctx.ui.confirm()` to show both endpoint labels, selected entry count, and token estimate. Declining stops before drafting. The plan contains `anchorId`, selected entries, unchanged continuation, selected token estimate, complete selected serialization, and `sourceSha8`.
+6. `draftRangeSummary(deps.draft, ctx, selectedSerialized, instructions)` uses the current model. It sends the complete selected source without per-entry truncation. It rejects input that cannot fit beside the output reserve.
+7. Open `ctx.ui.editor()` with the draft. Empty or cancelled review stops with no writes.
+8. Recheck `sourceLeafId`, recompute the plan from fresh session state, and compare selected IDs and source hash.
+9. Render one range-tail body: short header → approved summary → unchanged serialized continuation. Selected source text is not copied.
+10. Apply in this exact order:
    a. `ctx.navigateTree(anchorId, {summarize:false})`;
    b. `pi.sendMessage({customType:"ctree/range-tail", content, display:true, details}, {triggerTurn:false})`;
    c. `pi.appendEntry("ctree/range-compact", details)`;
    d. refresh ambient UI.
-10. `/undo` finds the latest active range marker and navigates to `sourceLeafId` with `summarize:false`. The tail and marker remain off-path.
+11. `/undo` finds the latest active range marker and navigates to `sourceLeafId` with `summarize:false`. The tail and marker remain off-path.
 
 Persisted v1 schemas (unknown fields are allowed; unknown later versions stay preserved):
 
@@ -167,7 +169,7 @@ This is not Pi `/compact`: `/compress` is user-started, range-selected, reviewed
 
 ## 6. TUI specifics (from pi-tui source)
 
-- **Tree rendering:** copy the flatten-pattern from internal `tree-selector.ts` (`modes/interactive/components/`): flatten visible nodes with `├─ └─ │` guides into a list, then a `SelectList`-style component with `maxVisible ≈ 30` window. No virtualization exists; never render more than the visible slice (10k-entry sessions must stay O(visible)).
+- **Range selection:** use Pi's exported `TreeSelectorComponent` unchanged. Its native `├─ └─ │` connectors, active-path marker, folding, filtering, scrolling, labels, theme, and keybindings are the contract. Do not flatten the range tree or implement a local range renderer.
 - **Width contract:** every `render(width)` line must be pre-truncated (`truncateToWidth`) — overflow corrupts the screen (gotcha #1 from source).
 - **Overlay focus:** use `OverlayHandle.unfocus({target})` deliberately when opening nested modals (merge selector → record editor); focus-restore is stateful and the documented sharp edge.
 - **Record editing:** embed pi-tui `Editor` (the chat-input component: wrap, scroll, undo, kill-ring) inside `RecordEditorPanel`; read text via `getExpandedText()` (paste markers!).

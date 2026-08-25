@@ -58,7 +58,7 @@ You can already *split* and *navigate* context natively — but the moves that k
 |---|---|
 | **`/branch <name> [model]`** | Label the current point and fork off — optionally onto a cheaper model for the side-quest. The trunk model is restored on merge. |
 | **`/merge`** | Close a branch — **bare `/merge` squashes** to a human-confirmed ◆ decision record (`--pick` for the mode selector); also **discard** and **tournament** (winner record + epitaphs for the losers). |
-| **`/compress [instructions]`** | Select one continuous range on the active context path, draft a summary with the current model, and review it before it replaces that range. The continuation stays unchanged and the source stays recoverable. |
+| **`/compress [instructions]`** | Select one continuous range through two native Pi Session Tree screens, draft a summary with the current model, and review it before it replaces that range. The continuation stays unchanged and the source stays recoverable. |
 | **`/crop`** | Stub fat tool/MCP results, or drop a whole Q&A turn — **append-only**, always recoverable. `--top` crops the biggest result inline; or review in the panel; or headless `--auto --apply`. |
 | **`/undo`** | One-key revert of the last mutation — re-open a squashed/discarded branch, restore a compression or crop, or undo a `/branch`. **Append-only**: nothing is deleted. |
 | **`/panel` (`Ctrl+Q`)** | Full-screen TUI: the tree with per-node token costs, branch status colors, top context consumers, all decision records (`/decisions --export` to markdown), and an entry inspector. |
@@ -174,15 +174,14 @@ Merging never triggers pi's lossy summarize-on-leave — you never end up with b
 
 ### `/compress [instructions]`
 
-Opens the full session tree in range-selection mode. Only entries in the current `contextSlice` are selectable. Off-path history and structural entries stay visible but unavailable. Decision records, an incomplete current user turn, and incomplete tool-call groups are protected.
+Opens Pi's native **Session Tree** twice without moving the current leaf:
 
-Tool calls are atomic groups: an assistant tool call and all related tool results move into the range together. A boundary cannot split that group. Select one or more safe groups:
+1. The first tree opens at the current leaf. Move with Pi's native tree keys and press `Enter` to select the range start.
+2. The second tree opens at the normalized start boundary. Move to the range end and press `Enter` again.
 
-- `Space` sets the start, then the end. A reversed pair is normalized.
-- `x` clears the range.
-- `Enter` confirms a complete valid range.
-- `Esc` returns to the normal tree view. `q` closes without a change.
-- From the normal `/panel` tree, press `r` to enter range mode.
+Both screens use Pi's native branch connectors, active-path marker, folding, filtering, scrolling, labels, theme, and keybindings. Cancel either selector to write nothing. Off-path or structural entries, decision records, an incomplete current user turn, and incomplete tool-call groups are invalid. An invalid selection shows a notice and reopens the same native selector.
+
+Tool calls are atomic groups: selecting an assistant tool-call member or one of its results expands that endpoint to the complete call/result group. After both selections, Pi's standard confirmation shows the normalized start and end labels, selected entry count, and estimated token total. Declining it stops before drafting.
 
 The current model sees only the selected serialized source. Optional command text becomes extra summary instructions. The draft then opens in the editor. Saving a non-empty review is required. Cancel or save an empty value to write nothing.
 
@@ -223,11 +222,11 @@ It reverts the last *active* mutation (the most recent still on your path) — r
 
 ### `/panel` (also `Ctrl+Q`) and `/decisions [--export path]`
 
-The full-screen context panel (an overlay over Pi). `/decisions` opens it on the decisions view; **`/decisions --export [path]`** writes trunk records to markdown. The panel stays open across actions: jump, branch, merge, range apply, or crop apply runs in command context after session revalidation, then the panel opens again with fresh state. `Ctrl+Q` stays view-only when Pi does not provide command context; use `/panel` for mutations.
+The full-screen context panel (an overlay over Pi). `/decisions` opens it on the decisions view; **`/decisions --export [path]`** writes trunk records to markdown. The panel stays open across actions: jump, branch, merge, or crop apply runs in command context after session revalidation, then the panel opens again with fresh state. `Ctrl+Q` stays view-only when Pi does not provide command context; use `/panel` for mutations.
 
 ## The context panel
 
-A full-screen overlay with six keyboard-driven views — **tree** (every entry with its token cost and branch status), **range** (safe continuous selection for `/compress`), **consumers** (what is using the window), **decisions** (◆ records as cards), **crop**, and **inspect**. You act from where you see the problem: `b` branch, `m` merge, `c` crop, `r` select a compression range, and `⏎` jump/fold. The screenshot above is the tree view.
+A full-screen overlay with five keyboard-driven views — **tree** (every entry with its token cost and branch status), **consumers** (what is using the window), **decisions** (◆ records as cards), **crop**, and **inspect**. You act from where you see the problem: `b` branch, `m` merge, `c` crop, and `⏎` jump/fold. `/compress` uses Pi's native Session Tree outside this custom panel. The screenshot above is the tree view.
 
 > **Full keymap, glyph legend, and reading guide → [USAGE §5 — The context panel](docs/USAGE.md#5-the-context-panel--keys).**
 

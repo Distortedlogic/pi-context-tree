@@ -35,7 +35,7 @@ Pi sessions are trees, but the workflow around them is manual: labels, branch hy
 2. **`/merge`** — close a branch by squash, discard, or tournament.
 3. **`/compress [instructions]`** — select one continuous active-context range, draft and review its summary, and keep the unchanged continuation.
 4. **`/crop`** — remove selected large tool results or a complete Q&A turn with append-only recovery.
-5. **Context Panel** — a full-screen TUI for tree, range, crop, decision, consumer, and inspection views.
+5. **Context Panel** — a full-screen TUI for tree, crop, decision, consumer, and inspection views. `/compress` uses Pi's native Session Tree selector.
 6. **Ambient UI** — title, context gauge, trend, and guidance.
 7. **`pitree`** — read-only forest CLI and standalone panel across projects.
 
@@ -72,7 +72,7 @@ Before branching, two giant MCP results (40k tokens) sit in the trunk. `/crop` o
 `pitree` prints all projects' trees with dangling branches flagged; `pitree ui` opens the same panel standalone in read-only forest mode.
 
 ### G — reviewed range compression
-`/compress preserve exact commands` opens the full tree. The user selects a safe start and end on the active context path. The current model drafts from only that range. The user reviews the draft. Apply writes the summary plus unchanged continuation on a new branch and leaves every source entry unchanged.
+`/compress preserve exact commands` opens Pi's native Session Tree twice. The user selects a safe start and end on the active context path with native Enter. The current model drafts from only that normalized range. The user reviews the draft. Apply writes the summary plus unchanged continuation on a new branch and leaves every source entry unchanged.
 
 ## 5. Functional requirements
 
@@ -101,7 +101,7 @@ Before branching, two giant MCP results (40k tokens) sit in the trunk. `/crop` o
 - F4.1 Launch: `/panel` command and a registered shortcut (default `Ctrl+Q`, configurable) inside pi; `pitree ui` standalone.
 - F4.2 Views: **Tree** (current session), **Forest** (standalone: all projects), **Decisions** (all decision records on trunk), **Consumers** (tokens aggregated by tool/entry type — makes MCP bloat visible), **Entry inspector** (full content of any node).
 - F4.3 Tree rendering: glyph per entry type; est. tokens per node; branch labels with status color (active/dangling/squashed/rejected); current leaf highlighted; collapsed-by-default closed branches.
-- F4.4 Keybindings (single keystroke): navigate ↑↓/jk, expand/collapse, `enter` jump leaf to node, `b` branch here, `m` merge flow, `c` crop mode, `r` range mode, `i` inspect, `D` decisions, `u` consumers, `q`/`esc` close. In range mode: `Space` start/end, `x` clear, `Enter` confirm, `Esc` tree, `q` close. Help footer always visible.
+- F4.4 Keybindings (single keystroke): navigate ↑↓/jk, expand/collapse, `enter` jump leaf to node, `b` branch here, `m` merge flow, `c` crop mode, `i` inspect, `D` decisions, `u` consumers, `q`/`esc` close. Help footer always visible. Range selection is not a custom panel mode.
 - F4.5 Header: session name · branch · context gauge (see F5) · model.
 - F4.6 In-pi mutations go through `ExtensionCommandContext` after `waitForIdle()`; standalone panel is **read-only** in v1 (mutation via RPC attach is v2).
 
@@ -118,14 +118,14 @@ As v0.1 (scan `~/.pi/agent/sessions`, streaming parse, `--dangling`, `--json`, r
 List decision records on the current trunk (also a panel view).
 
 ### F8 `/compress [instructions]`
-- F8.1 User initiation only. Open the panel with `initialView: "range"` after `waitForIdle()`.
-- F8.2 Candidates come only from `contextSlice`. Off-path and structural rows stay visible but unavailable.
-- F8.3 Protect decision records and an incomplete current user turn. Group each assistant tool call with all related results; a boundary cannot split this group.
-- F8.4 `Space` sets start and end, reverse order is normalized, `x` clears, `Enter` confirms, `Esc` returns to tree, and `q` cancels.
-- F8.5 The current model receives the complete selected serialized source without per-message truncation. Reject a request that cannot fit with output reserve.
-- F8.6 The editor is a required human gate. Empty or cancelled review writes nothing.
-- F8.7 Revalidate the source leaf and selected IDs after the panel and after review.
-- F8.8 Apply navigates to the entry before the range with `{summarize:false}`, appends one visible summary-plus-continuation message, then appends one operation marker.
+- F8.1 User initiation only. After `waitForIdle()`, open the public `TreeSelectorComponent` with `ctx.sessionManager.getTree()`, `ctx.sessionManager.getLeafId()`, native filter mode `"default"`, and the current leaf as `initialSelectedId`.
+- F8.2 Native Enter returns the first selected entry ID. Native cancel returns `undefined` and writes nothing. Selection does not navigate the session.
+- F8.3 Resolve the first ID against safe groups from `contextSlice`. Reject off-path, structural, decision-record, incomplete-turn, and incomplete-tool-group entries. Show the reason and reopen the same selector after an invalid choice. Expand any assistant tool-call/result member to the group's start boundary.
+- F8.4 Open a second `TreeSelectorComponent` at the normalized first ID. Native Enter returns the last selected ID; native cancel writes nothing. Resolve tool-call/result members to the group's end boundary and reopen this selector after an invalid choice.
+- F8.5 Build the final plan from normalized group boundary IDs. Use `ctx.ui.confirm()` to show the normalized start label, end label, selected entry count, and estimated tokens. A declined confirmation stops before drafting.
+- F8.6 The current model receives the complete selected serialized source without per-message truncation. Reject a request that cannot fit with output reserve.
+- F8.7 The editor is a required human gate. Empty or cancelled review writes nothing.
+- F8.8 Revalidate the source leaf, selected IDs, and source hash after review. Only then navigate to the entry before the range with `{summarize:false}`, append one visible summary-plus-continuation message, and append one operation marker.
 - F8.9 Existing JSONL lines never change. `/undo` restores `sourceLeafId` and leaves the new entries off-path.
 
 ## 6. Decision Record template — v0.3: added **Assumptions** (completes the facts/decisions/assumptions triple from Forky's merge schema)

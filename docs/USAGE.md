@@ -100,20 +100,16 @@ The editor is a hard gate — **nothing lands until you save**. Merging never tr
 /compress preserve exact commands, file paths, and failed validation
 ```
 
-The command opens the full tree in range mode. Only the active `contextSlice` path is selectable. Off-path and structural rows remain visible, but they show as unavailable. Decision records are protected. An incomplete current user turn is protected. An incomplete assistant tool-call group is also protected.
+The command uses Pi's native **Session Tree** in two passes and does not navigate during selection:
 
-An assistant tool call and all related tool results form one safe group. A range boundary cannot split that group. The range can contain one or more safe groups.
+1. The first native tree opens at the current leaf. Use Pi's native tree movement, folding, and filtering, then press `Enter` on the range start.
+2. The second native tree opens at that normalized start boundary. Move to the range end and press `Enter` again.
 
-Keys:
+Cancel either native selector with Pi's native cancel key to write nothing. Off-path and structural entries, decision records, an incomplete current user turn, and incomplete assistant tool-call groups are invalid. An invalid choice shows a notice and reopens the same selector.
 
-- `Space` sets the first endpoint and then the second endpoint. Reverse order is normalized.
-- `x` clears both endpoints.
-- `Enter` confirms a complete valid range.
-- `Esc` returns to the normal tree view.
-- `q` closes the panel and writes nothing.
-- In the normal `/panel` tree view, `r` enters range mode.
+An assistant tool call and all related tool results form one safe group. Selecting any member expands the endpoint to the complete group boundary. After both selections, a standard Pi confirmation shows the normalized start label, end label, selected entry count, and estimated token total. Declining the confirmation stops before the model drafts anything.
 
-After selection, the current model receives only the selected serialized source. Optional command text is added as summary instructions. The draft opens in the editor and requires review. Saving an empty value or cancelling writes nothing.
+After confirmation, the current model receives only the selected serialized source. Optional command text is added as summary instructions. The draft opens in the editor and requires review. Saving an empty value or cancelling writes nothing.
 
 Apply keeps all context after the selected range. It writes the approved summary and unchanged continuation as a visible range-tail message, then writes a range marker. Existing JSONL lines are not changed. `/undo` returns to the original source leaf; the summary and marker remain in off-path history.
 
@@ -156,8 +152,7 @@ All views: `↑↓` / `j k` move · `g`/`G` top/bottom · `q` close · `esc` bac
 
 | View | What it shows · keys |
 |---|---|
-| **tree** | every entry with token cost; fork status colors; `← you are here`, `◀ leaf`, `⚠` on ≥10k entries. <br>`⏎` jump/fold · `b` branch from entry · `m` merge · `c` crop · `r` range compress · `i` inspect · `D` decisions · `u` consumers |
-| **range** | `Space` start/end · `x` clear · `⏎` confirm · `Esc` normal tree · `q` close; `[S]` start · `[E]` end · `[■]` inside · `[×]` unavailable |
+| **tree** | every entry with token cost; fork status colors; `← you are here`, `◀ leaf`, `⚠` on ≥10k entries. <br>`⏎` jump/fold · `b` branch from entry · `m` merge · `c` crop · `i` inspect · `D` decisions · `u` consumers |
 | **crop** | `space` mark · `a` auto · `⏎` apply · **`t` toggle result ⇄ turn mode** · in turn mode `space` marks a whole Q&A turn |
 | **consumers** | tokens by source, bars scaled to the biggest. `c` jump to crop |
 | **decisions** | ◆ records as cards (date · model · human-confirmed ✓ · outcome · ✗ epitaphs). `⏎` jump to the record |
