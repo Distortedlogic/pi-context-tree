@@ -1,4 +1,5 @@
 import { TreeSelectorComponent } from "@earendil-works/pi-coding-agent";
+import { Loader } from "@earendil-works/pi-tui";
 import {
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
@@ -91,16 +92,16 @@ export async function applyRangeCompressionPlan(
 	initialPlan: RangePlan,
 	instructions: string | undefined,
 	deps: Deps,
-): Promise<void> {
+): Promise<boolean> {
 	if (leafIdOf(ctx) !== initialPlan.sourceLeafId) {
 		ctx.ui.notify("session changed while the range selector was open — re-run /compress (nothing written)", "warning");
-		return;
+		return false;
 	}
 
 	const summaryModel = modelKey(ctx.model);
 	if (!summaryModel) {
 		ctx.ui.notify("no current model is available for the range summary — nothing written", "error");
-		return;
+		return false;
 	}
 	ctx.ui.notify(`drafting range summary with ${summaryModel}…`, "info");
 	let draft: string;
@@ -108,7 +109,7 @@ export async function applyRangeCompressionPlan(
 		draft = await draftRangeSummary(deps.draft, ctx, initialPlan.selectedSerialized, instructions);
 	} catch (error) {
 		ctx.ui.notify(`range summary failed: ${(error as Error).message} (nothing written)`, "error");
-		return;
+		return false;
 	}
 
 	const reviewed = await ctx.ui.editor(
@@ -117,14 +118,14 @@ export async function applyRangeCompressionPlan(
 	);
 	if (reviewed === undefined || reviewed.trim() === "") {
 		ctx.ui.notify("range compression cancelled — no summary confirmed, nothing written", "info");
-		return;
+		return false;
 	}
 
 	await ctx.waitForIdle();
 	const freshState = deriveState(ctx);
 	if (!freshState.leafId || freshState.leafId !== initialPlan.sourceLeafId) {
 		ctx.ui.notify("session changed during summary review — re-run /compress (nothing written)", "warning");
-		return;
+		return false;
 	}
 
 	let plan: RangePlan;
@@ -132,14 +133,14 @@ export async function applyRangeCompressionPlan(
 		plan = planRange(freshState.tree, initialPlan.sourceLeafId, initialPlan.startEntryId, initialPlan.endEntryId);
 	} catch (error) {
 		ctx.ui.notify(`selected range is no longer valid: ${(error as Error).message} (nothing written)`, "warning");
-		return;
+		return false;
 	}
 	const sameSelectedIds =
 		plan.selectedEntryIds.length === initialPlan.selectedEntryIds.length &&
 		plan.selectedEntryIds.every((id, index) => id === initialPlan.selectedEntryIds[index]);
 	if (!sameSelectedIds || plan.sourceSha8 !== initialPlan.sourceSha8) {
 		ctx.ui.notify("selected range changed during summary review — re-run /compress (nothing written)", "warning");
-		return;
+		return false;
 	}
 
 	const approvedSummary = reviewed.trim();
@@ -148,12 +149,12 @@ export async function applyRangeCompressionPlan(
 
 	if (leafIdOf(ctx) !== plan.sourceLeafId) {
 		ctx.ui.notify("session changed before range compression was applied — nothing written", "warning");
-		return;
+		return false;
 	}
 	const navigation = await ctx.navigateTree(plan.anchorId, { summarize: false });
 	if (navigation.cancelled) {
 		ctx.ui.notify("range compression cancelled during navigation — nothing written", "warning");
-		return;
+		return false;
 	}
 
 	pi.sendMessage(
@@ -171,6 +172,40 @@ export async function applyRangeCompressionPlan(
 		`compressed range: selected ~${fmtTokens(plan.selectedEstTokens)} · summary ~${fmtTokens(details.summaryEstTokens)} · reclaimed ~${fmtTokens(details.reclaimedEstTokens)} tokens · originals kept at ${plan.sourceLeafId}`,
 		"info",
 	);
+	return true;
+}
+
+/** Keep compression blocking until the complete operation reports success or failure. */
+export async function runBlockingRangeCompression(
+	pi: PiLike,
+	ctx: CmdCtxLike,
+	plan: RangePlan,
+	instructions: string | undefined,
+	deps: Deps,
+): Promise<boolean> {
+	if (!ctx.ui.custom) {
+		ctx.ui.notify("the blocking compression view is not available in this mode", "warning");
+		return false;
+	}
+	const result = await ctx.ui.custom<boolean>((tui, theme, _keybindings, done) => {
+		const loader = new Loader(
+			tui,
+			(text) => theme.fg("accent", text),
+			(text) => theme.fg("muted", text),
+			"Compressing selected range…",
+		);
+		void Promise.resolve()
+			.then(() => applyRangeCompressionPlan(pi, ctx, plan, instructions, deps))
+			.then(
+				(success) => done(success),
+				(error: unknown) => {
+					ctx.ui.notify(`range compression failed: ${(error as Error).message} (nothing else written)`, "error");
+					done(false);
+				},
+			);
+		return loader;
+	});
+	return result ?? false;
 }
 
 export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: string, deps: Deps): Promise<void> {
@@ -240,7 +275,7 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 		);
 		if (!confirmed) return;
 
-		await applyRangeCompressionPlan(pi, ctx, plan, instructions, deps);
+		await runBlockingRangeCompression(pi, ctx, plan, instructions, deps);
 		return;
 	}
 }
