@@ -87,7 +87,7 @@ export function buildRangeCompactData(
 	};
 }
 
-/** Apply a reviewed range plan. The session is revalidated before every write. */
+/** Apply a generated range summary. The session is revalidated before every write. */
 export async function applyRangeCompressionPlan(
 	pi: PiLike,
 	ctx: CmdCtxLike,
@@ -108,20 +108,12 @@ export async function applyRangeCompressionPlan(
 	}
 	progress?.("Drafting summary");
 	if (!progress) ctx.ui.notify(`drafting range summary with ${summaryModel}…`, "info");
-	let draft: string;
+	let generatedSummary: string;
 	try {
-		draft = await draftRangeSummary(deps.draft, ctx, initialPlan.selectedSerialized, instructions);
+		generatedSummary = (await draftRangeSummary(deps.draft, ctx, initialPlan.selectedSerialized, instructions)).trim();
+		if (!generatedSummary) throw new Error("model returned an empty range summary");
 	} catch (error) {
 		ctx.ui.notify(`range summary failed: ${(error as Error).message} (nothing written)`, "error");
-		return false;
-	}
-
-	const reviewed = await ctx.ui.editor(
-		`Range summary — review/edit; closing without saving cancels (${initialPlan.selectedEntryIds.length} entries)`,
-		draft,
-	);
-	if (reviewed === undefined || reviewed.trim() === "") {
-		ctx.ui.notify("range compression cancelled — no summary confirmed, nothing written", "info");
 		return false;
 	}
 
@@ -129,7 +121,7 @@ export async function applyRangeCompressionPlan(
 	await ctx.waitForIdle();
 	const freshState = deriveState(ctx);
 	if (!freshState.leafId || freshState.leafId !== initialPlan.sourceLeafId) {
-		ctx.ui.notify("session changed during summary review — re-run /compress (nothing written)", "warning");
+		ctx.ui.notify("session changed while drafting the summary — re-run /compress (nothing written)", "warning");
 		return false;
 	}
 
@@ -148,9 +140,8 @@ export async function applyRangeCompressionPlan(
 		return false;
 	}
 
-	const approvedSummary = reviewed.trim();
-	const details = buildRangeCompactData(plan, approvedSummary, summaryModel);
-	const rebuilt = renderRangeTail(plan, approvedSummary);
+	const details = buildRangeCompactData(plan, generatedSummary, summaryModel);
+	const rebuilt = renderRangeTail(plan, generatedSummary);
 
 	progress?.("Applying compression");
 	if (leafIdOf(ctx) !== plan.sourceLeafId) {
@@ -308,7 +299,7 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 
 export function registerRangeCompress(pi: PiLike, deps: Deps): void {
 	pi.registerCommand("compress", {
-		description: "pi-context-tree: select, summarize, review, and replace one active-context range",
+		description: "pi-context-tree: select, summarize, and replace one active-context range",
 		handler: (args, ctx) => rangeCompressHandler(pi, ctx, args, deps),
 	});
 }
