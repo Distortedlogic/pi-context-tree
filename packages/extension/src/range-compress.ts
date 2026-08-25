@@ -19,6 +19,8 @@ import { draftRangeSummary } from "./draft.ts";
 import { deriveState } from "./state.ts";
 
 type RangePhase = "start" | "end";
+type RangeCompressionStage = "Drafting summary" | "Checking selected range" | "Applying compression";
+type RangeCompressionProgress = (stage: RangeCompressionStage) => void;
 type NativeTree = ReturnType<CmdCtxLike["sessionManager"]["getTree"]>;
 type NativeTreeNode = NativeTree[number];
 
@@ -92,6 +94,7 @@ export async function applyRangeCompressionPlan(
 	initialPlan: RangePlan,
 	instructions: string | undefined,
 	deps: Deps,
+	progress?: RangeCompressionProgress,
 ): Promise<boolean> {
 	if (leafIdOf(ctx) !== initialPlan.sourceLeafId) {
 		ctx.ui.notify("session changed while the range selector was open — re-run /compress (nothing written)", "warning");
@@ -103,7 +106,8 @@ export async function applyRangeCompressionPlan(
 		ctx.ui.notify("no current model is available for the range summary — nothing written", "error");
 		return false;
 	}
-	ctx.ui.notify(`drafting range summary with ${summaryModel}…`, "info");
+	progress?.("Drafting summary");
+	if (!progress) ctx.ui.notify(`drafting range summary with ${summaryModel}…`, "info");
 	let draft: string;
 	try {
 		draft = await draftRangeSummary(deps.draft, ctx, initialPlan.selectedSerialized, instructions);
@@ -121,6 +125,7 @@ export async function applyRangeCompressionPlan(
 		return false;
 	}
 
+	progress?.("Checking selected range");
 	await ctx.waitForIdle();
 	const freshState = deriveState(ctx);
 	if (!freshState.leafId || freshState.leafId !== initialPlan.sourceLeafId) {
@@ -147,6 +152,7 @@ export async function applyRangeCompressionPlan(
 	const details = buildRangeCompactData(plan, approvedSummary, summaryModel);
 	const rebuilt = renderRangeTail(plan, approvedSummary);
 
+	progress?.("Applying compression");
 	if (leafIdOf(ctx) !== plan.sourceLeafId) {
 		ctx.ui.notify("session changed before range compression was applied — nothing written", "warning");
 		return false;
@@ -187,12 +193,13 @@ export async function runBlockingRangeCompression(
 
 	const result = await ctx.ui.custom<boolean>(
 		(tui, theme, _keybindings, done) => {
+			const rangeDetails = `summary model ${modelKey(ctx.model) ?? "unavailable"} · ${plan.selectedEntryIds.length} selected entries · ~${fmtTokens(plan.selectedEstTokens)} source tokens`;
 			const loader = Object.assign(
 				new Loader(
 					tui,
 					(text) => theme.fg("accent", text),
 					(text) => theme.fg("muted", text),
-					"Compressing selected range…",
+					`Preparing compression · ${rangeDetails}`,
 				),
 				{
 					focused: true,
@@ -200,15 +207,26 @@ export async function runBlockingRangeCompression(
 					handleInput: (_data: string): void => {},
 				},
 			);
+			const finish = (success: boolean): void => {
+				try {
+					loader.stop();
+				} finally {
+					done(success);
+				}
+			};
 			void Promise.resolve()
-				.then(() => applyRangeCompressionPlan(pi, ctx, plan, instructions, deps))
-				.then(
-					(success) => done(success),
-					(error: unknown) => {
+				.then(() =>
+					applyRangeCompressionPlan(pi, ctx, plan, instructions, deps, (stage) => {
+						loader.setMessage(`${stage} · ${rangeDetails}`);
+					}),
+				)
+				.then(finish, (error: unknown) => {
+					try {
 						ctx.ui.notify(`range compression failed: ${(error as Error).message} (nothing else written)`, "error");
-						done(false);
-					},
-				);
+					} finally {
+						finish(false);
+					}
+				});
 			return loader;
 		},
 		{ overlay: false },
