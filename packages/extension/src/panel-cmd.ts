@@ -22,16 +22,11 @@ import { type CmdCtxLike, type CtxLike, type Deps, type PiLike, leafIdOf, projec
 import { entriesOf } from "./adapter.ts";
 import { branchHandler } from "./branch.ts";
 
-const DEFAULT_PANEL_RANGE_INSTRUCTIONS =
-	"Create a concise continuation summary that preserves all facts needed to resume the selected work.";
-
 export interface PanelOpenOptions {
 	initialView?: PanelView;
 	premark?: string[];
 	dryRun?: boolean;
 	readOnly?: boolean;
-	/** Optional text from `/compress [instructions]`. */
-	compressInstructions?: string;
 }
 
 export function buildPanelInput(pi: PiLike, ctx: CtxLike, opts: PanelOpenOptions = {}): PanelInput {
@@ -48,7 +43,6 @@ export function buildPanelInput(pi: PiLike, ctx: CtxLike, opts: PanelOpenOptions
 		dryRun: opts.dryRun,
 		initialView: opts.initialView,
 		premark: opts.premark,
-		compressInstructions: opts.compressInstructions,
 	};
 }
 
@@ -156,17 +150,6 @@ export async function executePanelAction(
 			await mergeHandler(pi, ctx, "", deps);
 			return;
 		}
-		case "range-apply": {
-			const { applyRangeCompressionPlan } = await import("./range-compress.ts");
-			await applyRangeCompressionPlan(
-				pi,
-				ctx,
-				action.plan,
-				action.instructions ?? DEFAULT_PANEL_RANGE_INSTRUCTIONS,
-				deps,
-			);
-			return;
-		}
 		case "crop-apply": {
 			const { applyCropPlan, cropHandler } = await import("./crop-cmd.ts");
 			if (action.dryRun) {
@@ -190,7 +173,7 @@ async function runPanel(pi: PiLike, ctx: CtxLike, deps: Deps, opts: PanelOpenOpt
 
 export function registerPanel(pi: PiLike, deps: Deps): void {
 	pi.registerCommand("panel", {
-		description: "pi-context-tree: full-screen context panel (tree · range · crop · consumers · decisions)",
+		description: "pi-context-tree: full-screen context panel (tree · crop · consumers · decisions)",
 		handler: (_args, ctx) => runPanel(pi, ctx, deps),
 	});
 	// ctrl+q, not ctrl+t: pi reserves ctrl+t for app.thinking.toggle (it's in
