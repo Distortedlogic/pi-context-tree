@@ -119,24 +119,6 @@ export class ContextPanel {
 
 		let left: string;
 		switch (row.kind) {
-			case "range": {
-				const marker =
-					row.rangeStart && row.rangeEnd
-						? `${t.rangeStart("[S]")}${t.rangeEnd("[E]")}`
-						: row.rangeStart
-							? t.rangeStart("[S]")
-							: row.rangeEnd
-								? t.rangeEnd("[E]")
-								: row.inRange
-									? t.rangeSelected("[■]")
-									: row.rangeEligible
-										? t.dim("[ ]")
-										: t.dim("[×]");
-				const paint = row.protected ? t.dim : row.inRange ? t.rangeSelected : row.dim ? t.dim : t.text;
-				const reason = row.protectReason ? t.dim(` (${row.protectReason})`) : "";
-				left = `${indent}${marker} ${paint(row.glyph)} ${paint(row.text)}${reason}`;
-				break;
-			}
 			case "fork": {
 				const color = t.presentation[row.presentation ?? "active"];
 				const fold = row.foldable ? (row.folded ? " [+]" : " [-]") : "";

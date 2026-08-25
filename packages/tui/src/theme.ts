@@ -15,9 +15,6 @@ export interface CtreeTheme {
 	tokensBig: (s: string) => string;
 	leaf: (s: string) => string;
 	mark: (s: string) => string;
-	rangeStart: (s: string) => string;
-	rangeEnd: (s: string) => string;
-	rangeSelected: (s: string) => string;
 	decision: (s: string) => string;
 	user: (s: string) => string;
 	presentation: Record<ForkPresentation, (s: string) => string>;
@@ -33,9 +30,6 @@ export const defaultTheme: CtreeTheme = {
 	tokensBig: chalk.yellow,
 	leaf: chalk.green,
 	mark: chalk.red.bold,
-	rangeStart: chalk.cyan.bold,
-	rangeEnd: chalk.magenta.bold,
-	rangeSelected: chalk.blue,
 	decision: chalk.magenta,
 	user: chalk.cyan,
 	presentation: {
