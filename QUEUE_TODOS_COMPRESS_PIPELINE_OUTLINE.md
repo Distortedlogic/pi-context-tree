@@ -24,7 +24,7 @@ The agent must not receive the full future task list during execution. The agent
 - Remove the `todo` agent tool and all related prompt guidance.
 - Supply only the current batch to `pi-true-queue` through `pi.events`.
 - Mark a batch complete only after reviewed compression succeeds.
-- Provide `/todos dump` only as a stop-and-inspect escape action.
+- Provide `/todos dump` only as a user triage action.
 
 #### `pi-true-queue`
 
@@ -165,13 +165,13 @@ The agent writes this file directly in the current project directory. `# Work Pl
 
 There is no load, reload, validate, approve, path-selection, or unload command in the happy path.
 
-### Stop-and-inspect action
+### Triage action
 
 ```text
-/todos dump                    Pause execution, flush current state to the bound H1-derived file, and show its path.
+/todos dump                    Flush current state to the bound H1-derived file and show its path.
 ```
 
-`/todos dump` takes no path. It is not part of normal execution. Existing standalone `/todos` display behavior stays unchanged.
+`/todos dump` takes no path. It does not change queue phase, current batch, compression, or next-batch dispatch. It is not part of normal execution. Existing standalone `/todos` display behavior stays unchanged.
 
 ## 5. Pipeline B: execute the task list
 
@@ -270,7 +270,7 @@ The queue is the coordinator. Every request includes a random operation ID. Ever
 - Show the current batch in user UI.
 - Mark one batch complete.
 - Reopen one batch after undo.
-- Dump the bound plan after a user stop request.
+- Dump the bound plan for user triage without changing queue state.
 - Report a plan conflict.
 
 ### Queue boundary operations
@@ -316,7 +316,7 @@ Emit `accepted` synchronously before draft and review starts. Emit one terminal 
 8. Keep all task content and checkbox state only in the Markdown file.
 9. Add the Remark AST plan validator and targeted checkbox writes.
 10. Add the four-channel event-bus plan service operations.
-11. Add `/todos dump` with no arguments. It pauses the plan run, flushes the bound file, and shows its path.
+11. Add `/todos dump` with no arguments. It flushes the bound file and shows its path without emitting a pipeline event or changing plan-run state.
 12. Update the overlay from file and queue events automatically.
 13. Keep foreground and child-session UI isolation.
 14. Update README, configuration, and tool-reference documents so they no longer claim that an agent tool exists.
@@ -511,8 +511,8 @@ Use a small plan with three batches and one nested checklist.
     - Only batch 2 is sent next.
 14. Force one Markdown conflict and confirm fail-closed behavior.
 15. Review the file and use `/queue run` to continue batch 2.
-16. Run `/todos dump` and confirm that execution stops and the same canonical file is flushed.
-17. Run `/queue run` and complete batch 2.
+16. Run `/todos dump` and confirm that the same canonical file is flushed while queue phase and current batch stay unchanged.
+17. Complete batch 2.
 18. Undo batch 2 compression and confirm automatic queue and Markdown rollback.
 19. Complete all batches.
 20. Restart Pi during one run and confirm automatic recovery.

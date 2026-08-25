@@ -120,7 +120,7 @@
 - [ ] Partition bound-plan and overlay state by Pi session ID so child sessions cannot replace foreground state.
 - [ ] Dispose the file watcher and foreground UI binding during session shutdown.
 
-## 6. Implement the todo event provider and emergency dump
+## 6. Implement the todo event provider and triage dump
 
 - [ ] Register one handler for `rpiv-todo:plan:v1:request`.
 - [ ] Validate each request before reading or changing plan state.
@@ -137,9 +137,10 @@
 - [ ] Reject a batch mutation when the structure digest changed.
 - [ ] Emit every response on `rpiv-todo:plan:v1:result`.
 - [ ] Add `/todos dump` with no path argument.
-- [ ] Make `/todos dump` emit a stop request through the existing plan result channel.
+- [ ] Route `/todos dump` only through the local plan writer and user UI notifier.
 - [ ] Make `/todos dump` flush current checkbox state to the bound canonical file.
 - [ ] Make `/todos dump` show the canonical file path in user UI.
+- [ ] Return from `/todos dump` without emitting a plan or compression event and without changing queue state.
 - [ ] Make `/todos dump` send no plan content to the agent.
 - [ ] Route the existing standalone `/todos` display through the file-backed selectors and formatters.
 
@@ -261,7 +262,6 @@
 - [ ] After checkbox success, request only the next incomplete batch.
 - [ ] Set `complete` and clear the active task when no incomplete batch remains.
 - [ ] Dispatch the next batch only after the prior compression and checkbox write both succeed.
-- [ ] Handle `/todos dump` stop results by setting `paused` and sending no next batch.
 
 ## 12. Implement automatic restart and undo reconciliation
 
@@ -289,7 +289,7 @@
 - [ ] Update existing `rpiv-todo` tests for removal of the agent tool and prompt guidance.
 - [ ] Update existing `rpiv-todo` tests for canonical H1 filenames, empty sanitized names, collisions, and automatic rename.
 - [ ] Update existing `rpiv-todo` tests for zero, one, and multiple incomplete project plans.
-- [ ] Update existing `rpiv-todo` tests for automatic file reload, structure digest stability, targeted checkbox writes, and `/todos dump`.
+- [ ] Update existing `rpiv-todo` tests for automatic file reload, structure digest stability, targeted checkbox writes, `/todos dump`, and the absence of dump-triggered pipeline events.
 - [ ] Update existing `rpiv-todo` tests for plan request/result validation, operation idempotency, and session isolation.
 - [ ] Update existing `pi-context-tree` core tests for queue-anchor range planning, opening task retention, steering inclusion, and tool-call grouping.
 - [ ] Update existing `pi-context-tree` extension tests for event requests, public session actions, review cancellation, stale source rejection, and exact marker metadata.
