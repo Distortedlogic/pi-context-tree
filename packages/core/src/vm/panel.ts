@@ -18,7 +18,6 @@ import {
 } from "../crop.ts";
 import { type ForkInfo, type ForkPresentation, decisionsOnPath, extractForks, nearestOpenFork } from "../ctree.ts";
 import { type Band, band, estimateContextTokens, estimateEntryTokens, fmtTokens } from "../estimate.ts";
-import { type RangeCandidate, type RangePlan, planRange, rangeCandidates } from "../range-compress.ts";
 import { serializeEntry, textOfContent } from "../serialize.ts";
 import { SessionTree, contextSlice } from "../tree.ts";
 import type { CtreeCropData, CtreeDecisionDetails, SessionEntry, UserContent } from "../types.ts";
@@ -37,7 +36,7 @@ import {
 	isMessageEntry,
 } from "../types.ts";
 
-export type PanelView = "tree" | "range" | "crop" | "consumers" | "decisions" | "inspect";
+export type PanelView = "tree" | "crop" | "consumers" | "decisions" | "inspect";
 
 export interface PanelInput {
 	entries: SessionEntry[];
@@ -53,8 +52,6 @@ export interface PanelInput {
 	dryRun?: boolean;
 	initialView?: PanelView;
 	premark?: string[];
-	/** Optional text from `/compress [instructions]`. */
-	compressInstructions?: string;
 }
 
 export type PanelAction =
@@ -62,7 +59,6 @@ export type PanelAction =
 	| { type: "jump"; entryId: string }
 	| { type: "branch"; entryId: string }
 	| { type: "merge" }
-	| { type: "range-apply"; plan: RangePlan; instructions?: string }
 	| { type: "crop-apply"; plan: CropPlan; dryRun: boolean };
 
 export interface VmEffect {
@@ -71,7 +67,7 @@ export interface VmEffect {
 }
 
 export interface PanelRow {
-	kind: "entry" | "fork" | "range" | "crop" | "turn" | "consumer" | "decision" | "inspect-line";
+	kind: "entry" | "fork" | "crop" | "turn" | "consumer" | "decision" | "inspect-line";
 	id?: string;
 	depth: number;
 	glyph: string;
@@ -89,12 +85,6 @@ export interface PanelRow {
 	// crop rows
 	marked?: boolean;
 	protected?: boolean;
-	protectReason?: string;
-	selectable?: boolean;
-	rangeEligible?: boolean;
-	rangeStart?: boolean;
-	rangeEnd?: boolean;
-	inRange?: boolean;
 	armed?: boolean;
 	age?: number;
 	// consumer rows
@@ -133,8 +123,6 @@ export class PanelVm {
 	private readonly slice: SessionEntry[];
 	private candidates: CropCandidate[] | null = null;
 	private turnsCache: ContextTurn[] | null = null;
-	private compressionGroups: RangeCandidate[] | null = null;
-	private compressionGroupByEntry: Map<string, RangeCandidate> | null = null;
 
 	view: PanelView;
 	sel = 0;
@@ -145,8 +133,6 @@ export class PanelVm {
 	private readonly turnMarks = new Set<string>();
 	private armedId: string | null = null;
 	private inspectId: string | null = null;
-	private rangeStartId: string | null = null;
-	private rangeEndId: string | null = null;
 
 	constructor(input: PanelInput) {
 		this.input = input;
@@ -191,8 +177,6 @@ export class PanelVm {
 		switch (this.view) {
 			case "tree":
 				return this.treeRows();
-			case "range":
-				return this.rangeRows();
 			case "crop":
 				return this.cropMode === "turn" ? this.turnRows() : this.cropRows();
 			case "consumers":
@@ -342,86 +326,6 @@ export class PanelVm {
 				row.dim = true;
 				return row;
 		}
-	}
-
-	private getCompressionGroups(): RangeCandidate[] {
-		if (this.compressionGroups) return this.compressionGroups;
-		const groups = this.leafId ? rangeCandidates(this.tree, this.leafId) : [];
-		this.compressionGroups = groups;
-		this.compressionGroupByEntry = new Map(
-			groups.flatMap((group) => group.entryIds.map((entryId) => [entryId, group] as const)),
-		);
-		return groups;
-	}
-
-	private compressionGroupForEntry(entryId: string): RangeCandidate | undefined {
-		this.getCompressionGroups();
-		return this.compressionGroupByEntry?.get(entryId);
-	}
-
-	private buildRangePlan(startId = this.rangeStartId, endId = this.rangeEndId): RangePlan {
-		if (!startId || !endId || !this.leafId) throw new Error("select both range endpoints");
-		const groups = this.getCompressionGroups();
-		const startIndex = groups.findIndex((group) => group.id === startId);
-		const endIndex = groups.findIndex((group) => group.id === endId);
-		if (startIndex === -1 || endIndex === -1) throw new Error("range endpoint is not in the active context");
-		const first = groups[Math.min(startIndex, endIndex)];
-		const last = groups[Math.max(startIndex, endIndex)];
-		if (!first || !last) throw new Error("range endpoint is missing");
-		return planRange(this.tree, this.leafId, first.startEntryId, last.endEntryId);
-	}
-
-	private currentRangePlan(): RangePlan | undefined {
-		try {
-			return this.buildRangePlan();
-		} catch {
-			return undefined;
-		}
-	}
-
-	private rangeRows(): PanelRow[] {
-		const activeContextIds = new Set(this.slice.map((entry) => entry.id));
-		const plan = this.currentRangePlan();
-		const startGroup = this.rangeStartId
-			? this.getCompressionGroups().find((group) => group.id === this.rangeStartId)
-			: undefined;
-		const selectedIds = new Set(plan?.selectedEntryIds ?? startGroup?.entryIds ?? []);
-		const startEntryId = plan?.startEntryId ?? startGroup?.startEntryId;
-		return this.treeRows(true).map((row) => {
-			const entry = row.id ? this.tree.get(row.id) : undefined;
-			const group = row.id ? this.compressionGroupForEntry(row.id) : undefined;
-			const onCurrentPath = row.id ? this.tree.isAncestorOrSelf(row.id, this.leafId) : false;
-			let protectReason = group?.protectReason;
-			if (!group) {
-				if (!onCurrentPath) protectReason = "off active path";
-				else if (!entry || !activeContextIds.has(entry.id)) {
-					const structural =
-						entry !== undefined &&
-						!isMessageEntry(entry) &&
-						entry.type !== "custom_message" &&
-						entry.type !== "branch_summary" &&
-						entry.type !== "compaction";
-					protectReason = structural ? "structural entry" : "outside active context";
-				}
-			}
-			return {
-				...row,
-				kind: "range" as const,
-				selectable: group?.selectable ?? false,
-				rangeEligible: group?.selectable ?? false,
-				protected: !(group?.selectable ?? false),
-				protectReason,
-				inRange: row.id ? selectedIds.has(row.id) : false,
-				rangeStart: row.id === startEntryId,
-				rangeEnd: row.id === plan?.endEntryId,
-				dim: row.dim || !onCurrentPath || !activeContextIds.has(row.id ?? ""),
-			};
-		});
-	}
-
-	private clearCompressionRange(): void {
-		this.rangeStartId = null;
-		this.rangeEndId = null;
 	}
 
 	private getCandidates(): CropCandidate[] {
@@ -635,15 +539,9 @@ export class PanelVm {
 				case "u":
 					this.setView("consumers");
 					return {};
-				case "r":
-					this.clearCompressionRange();
-					this.setView("range");
-					return {};
 			}
 			return {};
 		}
-
-		if (this.view === "range") return this.handleRangeKey(key, readOnly);
 
 		if (this.view === "crop") {
 			if (key === "t") {
@@ -685,60 +583,6 @@ export class PanelVm {
 			return {};
 		}
 
-		return {};
-	}
-
-	private handleRangeKey(key: string, readOnly: boolean): VmEffect {
-		if (key === "x") {
-			this.clearCompressionRange();
-			return { notify: "compression range cleared" };
-		}
-		if (key === "space") {
-			if (readOnly) return this.deny();
-			const row = this.selectedRow();
-			const group = row?.id ? this.compressionGroupForEntry(row.id) : undefined;
-			if (!group?.selectable) {
-				return { notify: `not selectable: ${row?.protectReason ?? "entry is not in the active context"}` };
-			}
-			if (!this.rangeStartId || this.rangeEndId) {
-				this.rangeStartId = group.id;
-				this.rangeEndId = null;
-				return { notify: "range start set — Space sets the end (use the same group for a one-group range)" };
-			}
-			const groups = this.getCompressionGroups();
-			const first = groups.findIndex((candidate) => candidate.id === this.rangeStartId);
-			const second = groups.findIndex((candidate) => candidate.id === group.id);
-			const normalizedStart = groups[Math.min(first, second)];
-			const normalizedEnd = groups[Math.max(first, second)];
-			if (!normalizedStart || !normalizedEnd) return { notify: "invalid range endpoint" };
-			let plan: RangePlan;
-			try {
-				plan = this.buildRangePlan(normalizedStart.id, normalizedEnd.id);
-			} catch (error) {
-				return { notify: `invalid range: ${(error as Error).message}` };
-			}
-			this.rangeStartId = normalizedStart.id;
-			this.rangeEndId = normalizedEnd.id;
-			return {
-				notify: `range ready: ${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`,
-			};
-		}
-		if (key === "enter") {
-			if (readOnly) return this.deny();
-			let plan: RangePlan;
-			try {
-				plan = this.buildRangePlan();
-			} catch (error) {
-				return { notify: `invalid range: ${(error as Error).message}` };
-			}
-			return {
-				action: {
-					type: "range-apply",
-					plan,
-					instructions: this.input.compressInstructions?.trim() || undefined,
-				},
-			};
-		}
 		return {};
 	}
 
@@ -822,13 +666,6 @@ export class PanelVm {
 				const base = "TRUNK + BRANCHES · est tokens (~chars/4)";
 				return this.input.sessionName ? `SESSION ${this.input.sessionName} · ${base}` : base;
 			}
-			case "range": {
-				const plan = this.currentRangePlan();
-				if (plan)
-					return `COMPRESS RANGE — ${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`;
-				if (this.rangeStartId) return "COMPRESS RANGE — start set · Space sets the end · x clears";
-				return "COMPRESS RANGE — select two safe active-context rows with Space";
-			}
 			case "crop": {
 				if (this.cropMode === "turn") {
 					const reclaim = this.getTurns()
@@ -855,9 +692,7 @@ export class PanelVm {
 	footerHelp(): string {
 		switch (this.view) {
 			case "tree":
-				return "↑↓/jk move · ⏎ jump/fold · b branch · m merge · c crop · r compress range · i inspect · D decisions · u consumers · q close";
-			case "range":
-				return "Space start/end · x clear · ⏎ confirm · esc normal tree · q close";
+				return "↑↓/jk move · ⏎ jump/fold · b branch · m merge · c crop · i inspect · D decisions · u consumers · q close";
 			case "crop":
 				return this.cropMode === "turn"
 					? "space mark whole turn · ⏎ apply → new branch point · t results mode · esc back · q close"
