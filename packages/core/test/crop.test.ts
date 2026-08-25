@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { autoSelect, cropCandidates, planCrop, renderReconstruction, stubLine } from "../src/crop.ts";
-import { planRange, rangeCandidates, renderRangeTail } from "../src/range-compress.ts";
+import {
+	candidateByEntryId,
+	planRange,
+	rangeCandidates,
+	renderRangeTail,
+	resolveRangeEndpoint,
+} from "../src/range-compress.ts";
 import { SessionBuilder, filler } from "../src/testkit.ts";
 import { SessionTree } from "../src/tree.ts";
 
@@ -135,12 +141,9 @@ describe("range compression planning", () => {
 		expect(plan.selectedSerialized).toContain("selected source omega");
 	});
 
-	it("normalizes reversed endpoints", () => {
+	it("requires normalized group boundary IDs", () => {
 		const { tree, ids } = rangeScenario();
-		const plan = planRange(tree, ids.leaf, ids.end, ids.start);
-		expect(plan.startEntryId).toBe(ids.start);
-		expect(plan.endEntryId).toBe(ids.end);
-		expect(plan.selectedEntryIds).toEqual([ids.start, ids.end]);
+		expect(() => planRange(tree, ids.leaf, ids.end, ids.start)).toThrow(/not normalized/);
 	});
 
 	it("supports a range that reaches the current leaf", () => {
@@ -162,8 +165,13 @@ describe("range compression planning", () => {
 
 	it("rejects missing and off-path IDs", () => {
 		const { tree, ids } = rangeScenario();
+		const candidates = rangeCandidates(tree, ids.leaf);
 		expect(() => planRange(tree, ids.leaf, "missing", ids.end)).toThrow(/not found/);
 		expect(() => planRange(tree, ids.leaf, ids.offPath, ids.end)).toThrow(/active context path/);
+		expect(resolveRangeEndpoint(candidates, ids.offPath, "start")).toEqual({
+			ok: false,
+			reason: "entry is not in the active context",
+		});
 	});
 
 	it("protects decision records", () => {
@@ -178,9 +186,12 @@ describe("range compression planning", () => {
 		const leaf = b.assistant("after decision");
 		const tree = SessionTree.fromEntries(b.build().entries);
 
-		expect(rangeCandidates(tree, leaf).find((candidate) => candidate.id === decision)?.protectReason).toBe(
-			"decision record",
-		);
+		const candidates = rangeCandidates(tree, leaf);
+		expect(candidates.find((candidate) => candidate.id === decision)?.protectReason).toBe("decision record");
+		expect(resolveRangeEndpoint(candidates, decision, "start")).toEqual({
+			ok: false,
+			reason: "decision record",
+		});
 		expect(() => planRange(tree, leaf, decision, decision)).toThrow(/protected: decision record/);
 	});
 
@@ -207,10 +218,16 @@ describe("range compression planning", () => {
 		const call = tree.get(result)?.parentId;
 		expect(call).toBeTruthy();
 		const callId = call as string;
-		const candidate = rangeCandidates(tree, leaf).find((item) => item.id === callId);
+		const candidates = rangeCandidates(tree, leaf);
+		const candidate = candidates.find((item) => item.id === callId);
+		const byEntryId = candidateByEntryId(candidates);
 
 		expect(candidate?.entryIds).toEqual([callId, result]);
 		expect(candidate?.selectable).toBe(true);
+		expect(byEntryId.get(callId)).toBe(candidate);
+		expect(byEntryId.get(result)).toBe(candidate);
+		expect(resolveRangeEndpoint(candidates, result, "start")).toEqual({ ok: true, entryId: callId });
+		expect(resolveRangeEndpoint(candidates, callId, "end")).toEqual({ ok: true, entryId: result });
 		expect(planRange(tree, leaf, callId, result).selectedEntryIds).toEqual([callId, result]);
 		expect(() => planRange(tree, leaf, result, result)).toThrow(/range start.*split/);
 		expect(() => planRange(tree, leaf, callId, callId)).toThrow(/range end.*split/);
