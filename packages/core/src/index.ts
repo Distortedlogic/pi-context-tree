@@ -6,7 +6,16 @@ export * from "./estimate.ts";
 export * from "./consumers.ts";
 export * from "./record.ts";
 export * from "./crop.ts";
-export * from "./range-compress.ts";
+export {
+	candidateByEntryId,
+	planRange,
+	rangeCandidates,
+	renderRangeTail,
+	resolveRangeEndpoint,
+	type RangeCandidate,
+	type RangeEndpointResult,
+	type RangePlan,
+} from "./range-compress.ts";
 export * from "./forest.ts";
 export * from "./serialize.ts";
 export * from "./vm/panel.ts";

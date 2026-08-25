@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { estimateEntryTokens, fmtTokens } from "./estimate.ts";
-import { serializeEntries, textOfContent } from "./serialize.ts";
+import { serializeEntries } from "./serialize.ts";
 import { type SessionTree, contextSlice } from "./tree.ts";
 import type { SessionEntry } from "./types.ts";
 import { CTREE_DECISION, isCustomMessageEntry, isMessageEntry } from "./types.ts";
@@ -17,7 +17,6 @@ export interface RangeCandidate {
 	pathIndex: number;
 	endPathIndex: number;
 	estTokens: number;
-	label: string;
 	selectable: boolean;
 	protected: boolean;
 	protectReason?: string;
@@ -40,54 +39,6 @@ export interface RangePlan {
 	sourceSha8: string;
 }
 
-const LABEL_MAX = 88;
-
-function firstLine(text: string): string {
-	const line = text.split("\n", 1)[0] ?? "";
-	return line.length > LABEL_MAX ? `${line.slice(0, LABEL_MAX)}…` : line;
-}
-
-function entryLabel(entry: SessionEntry): string {
-	if (isMessageEntry(entry)) {
-		const message = entry.message;
-		switch (message.role) {
-			case "user":
-				return `user: ${firstLine(textOfContent(message.content))}`;
-			case "assistant": {
-				const text = message.content
-					.filter((block) => block.type === "text")
-					.map((block) => (block as { text: string }).text)
-					.join(" ");
-				const tools = message.content
-					.filter((block) => block.type === "toolCall")
-					.map((block) => (block as { name: string }).name)
-					.join(", ");
-				return text ? `assistant: ${firstLine(text)}` : `assistant → ${tools || "…"}`;
-			}
-			case "toolResult":
-				return `[${message.toolName}]`;
-			case "bashExecution":
-				return `[bash $ ${firstLine(message.command)}]`;
-			case "custom":
-				return `[${message.customType}]: ${firstLine(textOfContent(message.content))}`;
-			case "branchSummary":
-				return `branch summary: ${firstLine(message.summary)}`;
-			case "compactionSummary":
-				return `compaction: ${firstLine(message.summary)}`;
-		}
-	}
-	if (isCustomMessageEntry(entry)) {
-		return `[${entry.customType}]: ${firstLine(textOfContent(entry.content))}`;
-	}
-	if (entry.type === "branch_summary") {
-		return `branch summary: ${firstLine((entry as { summary: string }).summary)}`;
-	}
-	if (entry.type === "compaction") {
-		return `compaction: ${firstLine((entry as { summary: string }).summary)}`;
-	}
-	return entry.type;
-}
-
 function makeCandidate(
 	slice: readonly SessionEntry[],
 	startIndex: number,
@@ -99,15 +50,6 @@ function makeCandidate(
 	const last = entries[entries.length - 1] as SessionEntry;
 	const entryIds = entries.map((entry) => entry.id);
 	const selectable = protectReason === undefined;
-	const toolCount =
-		isMessageEntry(first) && first.message.role === "assistant"
-			? first.message.content.filter((block) => block.type === "toolCall").length
-			: 0;
-	const resultCount = entries.filter((entry) => isMessageEntry(entry) && entry.message.role === "toolResult").length;
-	const groupSuffix =
-		toolCount > 0
-			? ` · ${toolCount} call${toolCount === 1 ? "" : "s"} + ${resultCount} result${resultCount === 1 ? "" : "s"}`
-			: "";
 	return {
 		id: first.id,
 		startEntryId: first.id,
@@ -116,10 +58,35 @@ function makeCandidate(
 		pathIndex: startIndex,
 		endPathIndex,
 		estTokens: entries.reduce((total, entry) => total + estimateEntryTokens(entry), 0),
-		label: `${entryLabel(first)}${groupSuffix}`,
 		selectable,
 		protected: !selectable,
 		protectReason,
+	};
+}
+
+export function candidateByEntryId(candidates: readonly RangeCandidate[]): Map<string, RangeCandidate> {
+	const byEntryId = new Map<string, RangeCandidate>();
+	for (const candidate of candidates) {
+		for (const entryId of candidate.entryIds) byEntryId.set(entryId, candidate);
+	}
+	return byEntryId;
+}
+
+export type RangeEndpointResult = { ok: true; entryId: string } | { ok: false; reason: string };
+
+export function resolveRangeEndpoint(
+	candidates: readonly RangeCandidate[],
+	entryId: string,
+	endpoint: "start" | "end",
+): RangeEndpointResult {
+	const candidate = candidateByEntryId(candidates).get(entryId);
+	if (!candidate) return { ok: false, reason: "entry is not in the active context" };
+	if (candidate.protected) {
+		return { ok: false, reason: candidate.protectReason ?? "entry is protected" };
+	}
+	return {
+		ok: true,
+		entryId: endpoint === "start" ? candidate.startEntryId : candidate.endEntryId,
 	};
 }
 
@@ -210,22 +177,16 @@ export function planRange(tree: SessionTree, sourceLeafId: string, startId: stri
 	const candidates = rangeCandidates(tree, sourceLeafId);
 	const startPosition = endpointPosition(tree, slice, startId);
 	const endPosition = endpointPosition(tree, slice, endId);
-	const normalizedStartId = startPosition <= endPosition ? startId : endId;
-	const normalizedEndId = startPosition <= endPosition ? endId : startId;
-	const normalizedStartPosition = Math.min(startPosition, endPosition);
-	const normalizedEndPosition = Math.max(startPosition, endPosition);
-	const firstGroup = candidates.find(
-		(candidate) => candidate.pathIndex <= normalizedStartPosition && candidate.endPathIndex >= normalizedStartPosition,
-	);
-	const lastGroup = candidates.find(
-		(candidate) => candidate.pathIndex <= normalizedEndPosition && candidate.endPathIndex >= normalizedEndPosition,
-	);
+	if (startPosition > endPosition) throw new Error("range endpoints are not normalized");
+	const byEntryId = candidateByEntryId(candidates);
+	const firstGroup = byEntryId.get(startId);
+	const lastGroup = byEntryId.get(endId);
 	if (!firstGroup || !lastGroup) throw new Error("range endpoint is structural-only or missing");
-	if (normalizedStartId !== firstGroup.startEntryId) {
-		throw new Error(`range start ${normalizedStartId} would split a required tool-call group`);
+	if (startId !== firstGroup.startEntryId) {
+		throw new Error(`range start ${startId} would split a required tool-call group`);
 	}
-	if (normalizedEndId !== lastGroup.endEntryId) {
-		throw new Error(`range end ${normalizedEndId} would split a required tool-call group`);
+	if (endId !== lastGroup.endEntryId) {
+		throw new Error(`range end ${endId} would split a required tool-call group`);
 	}
 
 	const firstGroupIndex = candidates.indexOf(firstGroup);
