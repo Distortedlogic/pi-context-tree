@@ -288,6 +288,8 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 				`Start: ${startLabel}`,
 				`End: ${endLabel}`,
 				`${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`,
+				"The generated summary will be applied without review.",
+				"Terminal input will pause until compression finishes.",
 			].join("\n"),
 		);
 		if (!confirmed) return;
