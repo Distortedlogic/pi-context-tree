@@ -1,13 +1,14 @@
 # Queue Todos Compress Pipeline Implementation Tasks
 
-- Phase 0 contains the only prerequisite work that is outside this implementation sequence.
+- Phase 0 contains the only prerequisite work outside this implementation sequence.
 - After Phase 0, every checkbox changes source code, test code, package metadata, or TypeScript configuration.
-- Keep the Markdown plan as the only source of task content and checkbox state.
-- Keep future batch text out of agent messages, tool results, prompt guidance, and custom context entries.
+- Treat Markdown as a temporary planning and triage interchange format.
+- Treat private in-memory Todo state as the execution source of truth.
+- Keep future batch text out of agent messages, tool results, prompt guidance, queue state, and session custom entries.
+- Accept loss of the loaded plan on Pi process restart or extension reload. Do not persist future batches to disk.
 - Keep `/compress` available as the direct user command.
 - Use the same context-tree compression service for user-command and pipeline-event calls.
-- Use only `remark@15.0.1`, `remark-gfm@4.0.1`, `write-file-atomic@8.0.0`, `typebox@1.3.7`, Node file APIs, and Pi extension APIs for this work.
-- Do not add another parser, watcher, event bus, state framework, orchestration package, thin wrapper, or custom global registry.
+- Use only `remark@15.0.1`, `remark-gfm@4.0.1`, `write-file-atomic@8.0.0`, `typebox@1.3.7`, Node file APIs, and Pi extension APIs.
 - Update only existing test files in repositories that have tests.
 - Do not add a test suite to `pi-true-queue`.
 
@@ -15,285 +16,236 @@
 
 - [ ] Complete and commit every remaining task in `IDIOMATIC_NATIVE_PI_REFACTOR_TASK_LIST.md` on its active implementation branch.
 - [ ] Switch `pi-context-tree`, `rpiv-mono`, and `true-queue` to their `queue-todos-compress-loop` branches.
+- [ ] Check out the Pi `0.84.2` source fork and switch it to a `queue-todos-compress-loop` branch.
 
-## 1. Add the public event-safe Pi session action
+## 1. Add the narrow event-safe Pi session mutation API
 
-- [ ] Add `runSessionAction<T>(handler: (ctx: ExtensionCommandContext) => Promise<T>): Promise<T>` to the public Pi `ExtensionAPI` type.
+- [ ] Add an `applySessionMutation()` method to the public Pi `ExtensionAPI` type.
+- [ ] Define its input as `expectedSessionId`, `expectedLeafId`, `navigateToEntryId`, navigation options, ordered custom messages, and ordered custom entries.
+- [ ] Restrict navigation options to public `navigateTree()` options and require `summarize: false` for the pipeline call.
+- [ ] Define its result as `applied`, `cancelled`, or `stale` with the resulting leaf ID when applied.
 - [ ] Add the matching action handler to Pi's extension runtime action types.
-- [ ] Implement `runSessionAction` in Pi's extension runner with the existing serialized session-mutation queue.
-- [ ] Create a fresh session-bound `ExtensionCommandContext` for each callback.
-- [ ] Reject the operation when the session changes before callback start or before mutation apply.
-- [ ] Add `runSessionAction` to the structural `PiLike` adapter in `pi-context-tree`.
+- [ ] Implement the method in Pi's extension runner with the existing serialized session-mutation queue.
+- [ ] Recheck session ID and leaf ID before navigation and before appending messages or entries.
+- [ ] Apply navigation, custom messages, and custom entries as one ordered runner operation.
+- [ ] Return `stale` without writes when the expected session ID or expected leaf ID changed.
+- [ ] Add `applySessionMutation()` to the structural `PiLike` adapter in `pi-context-tree`.
 - [ ] Update every `pi-context-tree` workspace Pi development dependency to `0.84.2` and update `package-lock.json`.
 - [ ] Update the `rpiv-mono` root Pi development dependencies to `0.84.2` and update `package-lock.json`.
-- [ ] Route pipeline apply through `runSessionAction` and keep every `pi.events` payload limited to validated serializable data.
 
-## 2. Add the fixed four-channel protocol constants and schemas
+## 2. Add the fixed five-channel protocol constants and schemas
 
-- [ ] Add `PLAN_REQUEST_CHANNEL = "rpiv-todo:plan:v1:request"` and `PLAN_RESULT_CHANNEL = "rpiv-todo:plan:v1:result"` to a substantive `packages/rpiv-todo/plan-protocol.ts` module with the plan schemas.
+- [ ] Add `PLAN_REQUEST_CHANNEL = "rpiv-todo:plan:v1:request"` and `PLAN_RESULT_CHANNEL = "rpiv-todo:plan:v1:result"` to `packages/rpiv-todo/plan-protocol.ts` with the plan schemas.
 - [ ] Add matching plan channel constants and client payload schemas to `pi-true-queue/index.ts`.
 - [ ] Add `COMPRESSION_REQUEST_CHANNEL = "pi-context-tree:compress:v1:request"` and `COMPRESSION_RESULT_CHANNEL = "pi-context-tree:compress:v1:result"` to `packages/extension/src/compression-protocol.ts` with the compression schemas.
 - [ ] Add matching compression channel constants and client payload schemas to `pi-true-queue/index.ts`.
+- [ ] Add `QUEUE_STATE_CHANNEL = "pi-true-queue:state:v1"` to `pi-true-queue/index.ts` and the todo plan protocol module.
+- [ ] Define the queue-state payload as protocol version, run ID, and `idle`, `running`, `compressing`, `paused`, or `complete` phase only.
 - [ ] Validate every producer and consumer payload with its TypeBox schema before use.
 - [ ] Include one `operationId` created with `crypto.randomUUID()` in every request and matching result.
 - [ ] Include `runId`, `batchId`, and protocol version in every plan-run request and result.
 - [ ] Add TypeBox string-enum schemas for every plan and compression result state.
 - [ ] Use `success` and `failed` for terminal plan request results.
 - [ ] Use `accepted`, `applied`, `cancelled`, `failed`, and `undone` for compression results.
-- [ ] Put error codes and user-safe messages in failed results.
+- [ ] Add error codes and user-safe messages to failed results.
 - [ ] Use a fixed 5,000 ms timeout for plan requests and initial compression acceptance.
-- [ ] Make context-tree emit `accepted` synchronously before draft and review work starts.
-- [ ] Cancel the 5,000 ms compression timeout when `accepted` arrives.
-- [ ] Pause plan execution when plan results or compression acceptance do not arrive before the timeout.
-- [ ] Reject duplicate completed operation IDs without repeating file, context, or queue mutations.
+- [ ] Emit `accepted` synchronously before compression draft and review work starts.
+- [ ] Cancel the compression timeout when `accepted` arrives and leave summary review untimed.
+- [ ] Reject duplicate completed operation IDs without repeating Todo, context, or queue mutations.
 
-## 3. Replace the agent todo tool with a file-backed plan model
+## 3. Replace the todo agent tool with private in-memory plan state
 
 - [ ] Add `remark@15.0.1`, `remark-gfm@4.0.1`, and `write-file-atomic@8.0.0` to `packages/rpiv-todo/package.json` and update the root `package-lock.json`.
 - [ ] Remove `registerTodoTool(pi)` from `packages/rpiv-todo/index.ts`.
-- [ ] Remove todo tool registration, schema, execution, response-envelope, and agent-rendering code from `packages/rpiv-todo/todo.ts` and `packages/rpiv-todo/tool/`.
+- [ ] Remove todo tool registration, schema, execution, response-envelope, agent-rendering, and tool-result replay code from `packages/rpiv-todo/todo.ts` and `packages/rpiv-todo/tool/`.
 - [ ] Remove todo `promptSnippet`, `promptGuidelines`, and guidance configuration.
-- [ ] Remove replay of task snapshots from `todo` tool results.
-- [ ] Reconnect the existing `/todos` display and todo overlay to the file-backed plan state.
-- [ ] Replace agent task types with a file plan model that contains:
-  - [ ] Canonical file path.
+- [ ] Remove the `todo` tool from every `rpiv-mono` permission template, setup allowlist, agent prompt, workflow registration, and shipped configuration entry.
+- [ ] Remove sibling-package runtime calls that create, read, or update tasks through the `todo` agent tool.
+- [ ] Reconnect the existing `/todos` display and todo overlay to private in-memory plan state.
+- [ ] Add a project-scoped in-memory plan store that contains:
+  - [ ] Plan revision ID.
   - [ ] Level-one title.
+  - [ ] H1-derived triage filename.
   - [ ] Shared preamble Markdown.
-  - [ ] Ordered level-two batches.
-  - [ ] Batch identity derived from its one-based ordinal and normalized level-two heading.
+  - [ ] Ordered batches.
+  - [ ] Stable batch IDs.
   - [ ] Exact batch Markdown.
-  - [ ] Checkbox source positions.
-  - [ ] Completion state.
-  - [ ] Structure digest.
-- [ ] Add runtime-only current-batch display state that does not write an in-progress marker into Markdown.
-- [ ] Move Markdown parsing and state derivation into Pi-independent state modules and remove Pi UI imports from those modules.
-- [ ] Replace session task snapshots with canonical path, digest, current batch ID, phase, and operation ID fields that contain no task body.
+  - [ ] Current checkbox bitmap for each batch.
+  - [ ] Current batch ID.
+  - [ ] Completed operation results.
+  - [ ] Queue phase received from `QUEUE_STATE_CHANNEL`.
+- [ ] Add runtime-only in-progress display state without a Markdown marker.
+- [ ] Partition loaded plans by project identity and bind only one foreground execution session to each loaded plan.
+- [ ] Remove future batch bodies from todo session entries, queue entries, tool results, and custom message details.
+- [ ] Clear loaded plan content when the extension reloads or the Pi process starts without an in-memory plan.
 
-## 4. Implement canonical Markdown parsing and naming
+## 4. Implement temporary Markdown import and export
 
-- [ ] Parse plan files with `remark` and `remark-gfm`.
+- [ ] Parse planning and triage files with `remark` and `remark-gfm`.
 - [ ] Require exactly one level-one heading.
-- [ ] Derive the canonical filename from the level-one heading by:
-  - [ ] Trimming the heading text.
-  - [ ] Replacing each whitespace run with `_`.
-  - [ ] Removing characters other than letters, numbers, `_`, and `-`.
-  - [ ] Collapsing repeated `_` characters.
-  - [ ] Appending `.md`.
-  - [ ] Placing the file in the current project directory.
-- [ ] Reject a title that becomes empty after sanitization.
-- [ ] Move a newly detected valid plan to its canonical filename when its current name differs.
-- [ ] Stop and report a filename collision instead of overwriting another file.
+- [ ] Derive the canonical filename by trimming the H1, replacing each whitespace run with `_`, removing characters other than letters, numbers, `_`, and `-`, collapsing repeated `_`, and appending `.md`.
+- [ ] Preserve the H1 letter case in the canonical filename.
+- [ ] Reject an H1 that becomes empty after sanitization.
+- [ ] Require the agent-created file path to equal the H1-derived path in the current project directory.
+- [ ] Reject a noncanonical path during `/todos load` without moving or renaming the file.
 - [ ] Treat each level-two heading and its content as one ordered batch.
 - [ ] Require at least one GFM checkbox in every batch.
 - [ ] Attach every level-three and deeper heading to its parent level-two batch during AST traversal.
 - [ ] Treat `[x]` and `[X]` as checked.
-- [ ] Mark a batch complete only when all checkboxes in that batch are checked.
 - [ ] Set batch completion to false when any checkbox in that batch is unchecked.
-- [ ] Normalize a batch heading by trimming it, collapsing whitespace to one space, and lowercasing it.
-- [ ] Set `batchId` to `<one-based-ordinal>:<first-12-hex-of-SHA-256(normalized-heading)>`.
+- [ ] Normalize each level-two heading by trimming it, collapsing whitespace to one space, and lowercasing it.
+- [ ] Set `batchId` to the full lowercase hexadecimal SHA-256 of the normalized heading.
 - [ ] Reject duplicate normalized batch headings.
 - [ ] Extract the Markdown before the first level-two heading as the shared preamble.
-- [ ] Build the structure-digest source from the title, preamble, ordered normalized headings, and task text with every checkbox marker normalized to `[ ]`.
-- [ ] Set the structure digest to the lowercase hexadecimal SHA-256 of that UTF-8 source.
-- [ ] Exclude status-only checkbox changes from the structure digest.
-- [ ] Use AST source positions to patch only checkbox marks.
-- [ ] Write checkbox changes with `write-file-atomic`.
-- [ ] Reload and validate the file after every write.
-- [ ] Preserve every source byte outside the checkbox marker offsets during a checkbox-only write.
+- [ ] Create a new `planRevisionId` with `crypto.randomUUID()` on every successful load.
+- [ ] Record the exact checkbox bitmap for every batch during import.
+- [ ] Serialize private Todo state back to the H1-derived Markdown shape for triage dump.
+- [ ] Write triage Markdown with `write-file-atomic`.
 
-## 5. Implement automatic plan detection, binding, and user display
+## 5. Implement final approval through `/todos load`
 
-- [ ] Listen for successful agent `write` and `edit` tool results that target Markdown files in the current project directory.
-- [ ] Parse a changed Markdown file only after the write or edit succeeds.
-- [ ] Bind a valid incomplete plan automatically.
-- [ ] Watch the current project directory with `node:fs.watch` after session start.
-- [ ] Reload the bound plan after a completed external file change.
-- [ ] On session start, scan only top-level project Markdown files whose basenames match their sanitized level-one headings.
-- [ ] Bind the one valid incomplete canonical plan automatically.
-- [ ] Exclude fully complete plans from automatic binding.
-- [ ] Return a failed plan result when there is no incomplete canonical plan.
-- [ ] Return a failed plan result when there is more than one incomplete canonical plan.
-- [ ] Ignore unrelated Markdown change events without replacing the current bound plan state.
-- [ ] Update the todo overlay from the bound file and queue state.
-- [ ] Show batch titles and states only in user UI.
-- [ ] Exclude the plan path and future batch text from every agent-message construction input.
-- [ ] Partition bound-plan and overlay state by Pi session ID so child sessions cannot replace foreground state.
-- [ ] Dispose the file watcher and foreground UI binding during session shutdown.
+- [ ] Listen for successful agent `write` and `edit` tool results that target Markdown in the current project directory.
+- [ ] Record the latest successful Markdown write path without parsing or loading its task bodies.
+- [ ] Add `/todos load` with no path argument.
+- [ ] Read the remembered candidate path only when `/todos load` runs.
+- [ ] Parse and validate the complete plan into a staged in-memory value.
+- [ ] Reject load when no remembered candidate exists, the file is missing, the path is noncanonical, or validation fails.
+- [ ] Delete the Markdown file with `node:fs/promises.unlink` after staged validation succeeds.
+- [ ] Publish the staged value to the private in-memory plan store only after deletion succeeds.
+- [ ] Clear the remembered candidate path after successful load.
+- [ ] Treat successful `/todos load` as final user approval.
+- [ ] Preserve the loaded project plan in extension module memory when the planning session closes and the user starts a new session in the same Pi process.
+- [ ] Bind the next foreground session for that project as the execution session when `/queue run` starts.
+- [ ] Remove project-directory scanning, automatic incomplete-plan discovery, `node:fs.watch`, post-write renaming, and session-start file binding code.
 
 ## 6. Implement the todo event provider and triage dump
 
 - [ ] Register one handler for `rpiv-todo:plan:v1:request`.
-- [ ] Validate each request before reading or changing plan state.
-- [ ] Implement a `snapshot` request that returns:
-  - [ ] Plan title.
-  - [ ] Structure digest.
-  - [ ] Total, complete, and incomplete batch counts.
-  - [ ] Current incomplete batch ID and ordinal.
-  - [ ] No future batch body.
-- [ ] Implement a `current_batch` request that returns only the requested current batch body and shared preamble when the expected digest matches.
-- [ ] Implement a `complete_batch` request that checks every checkbox in the matching batch atomically.
-- [ ] Implement a `reopen_batch` request that restores the matching batch checkboxes to incomplete after pipeline undo.
+- [ ] Validate each request before reading or changing private plan state.
+- [ ] Implement `snapshot` to return plan revision ID, title, counts, current batch ID, current batch ordinal, and no future batch body.
+- [ ] Implement `current_batch` to return only the shared preamble, requested current batch Markdown, current checkbox bitmap, and expected plan revision ID.
+- [ ] Implement `complete_batch` to save the exact pre-completion checkbox bitmap under the compression operation ID and set every current batch checkbox to checked in memory.
+- [ ] Implement `reopen_batch` to restore the saved pre-completion checkbox bitmap referenced by `revertsOperationId`.
 - [ ] Make `complete_batch` and `reopen_batch` idempotent by operation ID.
-- [ ] Reject a batch mutation when the structure digest changed.
-- [ ] Emit every response on `rpiv-todo:plan:v1:result`.
+- [ ] Reject a batch mutation when plan revision ID or batch ID differs.
+- [ ] Emit every request result on `rpiv-todo:plan:v1:result`.
+- [ ] Listen to `pi-true-queue:state:v1` and update only cached run ID and queue phase.
 - [ ] Add `/todos dump` with no path argument.
-- [ ] Route `/todos dump` only through the local plan writer and user UI notifier.
-- [ ] Make `/todos dump` flush current checkbox state to the bound canonical file.
-- [ ] Make `/todos dump` show the canonical file path in user UI.
-- [ ] Return from `/todos dump` without emitting a plan or compression event and without changing queue state.
-- [ ] Make `/todos dump` send no plan content to the agent.
-- [ ] Route the existing standalone `/todos` display through the file-backed selectors and formatters.
+- [ ] Reject `/todos dump` unless cached queue phase is `idle`, `paused`, or `complete`.
+- [ ] Serialize the complete private plan to its H1-derived Markdown filename when `/todos dump` runs.
+- [ ] Show the created triage file path in user UI.
+- [ ] Leave queue phase, current batch, operation state, and next-batch dispatch unchanged.
+- [ ] Record the dumped path as the next `/todos load` candidate.
+- [ ] Replace private plan state from the edited triage file on the next successful `/todos load`, assign a new plan revision ID, and delete the file again.
+- [ ] Send no plan content to the agent from `/todos load`, `/todos dump`, event results, display state, or overlay details.
 
 ## 7. Extract the shared context-tree compression service
 
-- [ ] Refactor `packages/extension/src/range-compress.ts` so one substantive service owns:
-  - [ ] Idle wait.
-  - [ ] Source-leaf validation.
-  - [ ] Range-plan validation.
-  - [ ] Summary drafting.
-  - [ ] Summary review.
-  - [ ] Post-review source validation.
-  - [ ] Append-only navigation and apply.
-  - [ ] Marker creation.
-  - [ ] Ambient UI refresh.
-  - [ ] Structured operation result.
+- [ ] Refactor `packages/extension/src/range-compress.ts` so one substantive service owns summary drafting, summary review, source revalidation, append-only apply payload creation, marker creation, ambient refresh, and structured results.
 - [ ] Move range planning and request normalization into the existing planning modules and pass one immutable `RangePlan` into the shared service.
-- [ ] Make the existing `/compress` handler call this service through its command context.
-- [ ] Connect the existing interactive range selector to the shared service without changing its selected `RangePlan`.
-- [ ] Route the pipeline event handler to the same shared service through `runSessionAction`.
+- [ ] Make the existing `/compress` handler call the shared service through its command context.
+- [ ] Connect the existing interactive range selector to the shared service without changing its selected plan.
+- [ ] Route pipeline event requests to the same shared service.
+- [ ] Build a declarative `applySessionMutation()` payload for the event path after summary approval.
 
 ## 8. Add exact pipeline range planning
 
-- [ ] Add a pure core planner that accepts:
-  - [ ] Source leaf ID.
-  - [ ] Entry ID before the queued task message.
-  - [ ] Last settled entry ID.
+- [ ] Add a pure core planner that accepts source leaf ID, entry ID before the queued task message, and last settled entry ID.
 - [ ] Require the pre-task anchor and settled end entry to be on the active path.
 - [ ] Locate the queued user task message immediately after the pre-task anchor in active context.
 - [ ] Set the compression start boundary after the queued user task message.
-- [ ] Start the selected range at the first assistant group after that task message.
+- [ ] Start selection at the first assistant group after that task message.
 - [ ] Include later user steering messages inside the continuous execution range.
-- [ ] End the range at the complete atomic group that contains the settled end entry.
+- [ ] End selection at the complete atomic group that contains the settled end entry.
 - [ ] Reject an incomplete assistant tool-call group.
 - [ ] Reject a range that contains a protected decision or structural entry.
 - [ ] Reuse `rangeCandidates()` and `planRange()` for grouping, ordering, serialization, source hash, and token totals.
-- [ ] Preserve the preload context before the queued task message.
-- [ ] Preserve the exact queued task message.
+- [ ] Preserve preload context and the exact queued task message outside the selected range.
 - [ ] Return one immutable range plan to the shared compression service.
 
-## 9. Add event-driven pipeline compression and undo results
+## 9. Add event-driven pipeline compression and exact undo identity
 
 - [ ] Register one handler for `pi-context-tree:compress:v1:request`.
-- [ ] Validate the request with TypeBox before accessing session state.
-- [ ] Require `runId`, `batchId`, `operationId`, pre-task anchor ID, settled end ID, and expected queue phase.
-- [ ] Reject a request whose expected phase is not `compressing`.
-- [ ] Route the event path through the public Pi session-action API.
-- [ ] Build the exact pipeline range plan inside the fresh session action.
-- [ ] Show the selected entry count and token estimate before summary drafting.
+- [ ] Validate the request before accessing session state.
+- [ ] Require run ID, batch ID, compression operation ID, plan revision ID, pre-task anchor ID, settled end ID, expected session ID, expected source leaf ID, expected queue phase, and pre-completion checkbox bitmap.
+- [ ] Reject a request whose expected queue phase is not `compressing`.
+- [ ] Emit `accepted` before draft and review work starts.
+- [ ] Build the exact pipeline range plan from the current extension context.
 - [ ] Draft the execution summary with the current model.
-- [ ] Require the summary to preserve:
-  - [ ] Files changed.
-  - [ ] Important implementation decisions.
-  - [ ] Exact commands and test results.
-  - [ ] Failures and unresolved work.
-  - [ ] Commit hashes.
+- [ ] Require the summary to preserve files changed, implementation decisions, exact commands and test results, failures, unresolved work, and commit hashes.
 - [ ] Open the summary editor and require a non-empty saved value.
-- [ ] Return `cancelled` without writes when the user cancels or saves an empty value.
-- [ ] Revalidate source leaf, selected IDs, source hash, run ID, and batch ID after review.
-- [ ] Apply through `navigateTree(..., { summarize: false })`.
-- [ ] Add run ID, batch ID, operation ID, and source hash to `ctree/range-tail` and `ctree/range-compact` v1 data.
-- [ ] Emit `accepted` on `pi-context-tree:compress:v1:result` before draft and review work starts.
-- [ ] Emit one matching terminal `applied`, `cancelled`, or `failed` result after the accepted request finishes.
-- [ ] Derive prior applied operation results from workflow metadata on active or off-path context-tree markers.
-- [ ] Return the prior result for a duplicate operation ID without another mutation.
-- [ ] Extend `/undo` so a pipeline-owned range returns `undone` with the same run, batch, and operation identity.
-- [ ] Apply pipeline compression with append-only tail and marker entries so original session entries remain byte-for-byte recoverable.
+- [ ] Emit `cancelled` without session writes when the user cancels or saves an empty value.
+- [ ] Revalidate session ID, source leaf, selected IDs, source hash, run ID, batch ID, plan revision ID, and checkbox bitmap after review.
+- [ ] Call `applySessionMutation()` with the expected session and leaf IDs, anchor target, visible range-tail message, and range marker entry.
+- [ ] Add run ID, batch ID, compression operation ID, plan revision ID, source hash, and pre-completion checkbox bitmap to both range entries.
+- [ ] Emit one terminal `applied`, `cancelled`, or `failed` result after an accepted request.
+- [ ] Derive duplicate applied results from workflow metadata on active or off-path range markers.
+- [ ] Create a new operation ID for every pipeline `/undo` action.
+- [ ] Add `revertsOperationId` that references the applied compression operation ID.
+- [ ] Emit `undone` with run ID, batch ID, undo operation ID, `revertsOperationId`, plan revision ID, and saved checkbox bitmap.
+- [ ] Apply all range changes append-only so original session entries remain recoverable.
 
-## 10. Add the queue plan-run coordinator
+## 10. Add the queue plan-run coordinator and phase broadcast
 
 - [ ] Add `@earendil-works/pi-coding-agent@0.84.2`, `@earendil-works/pi-tui@0.84.2`, `typebox@1.3.7`, and `typescript@6.0.3` as `pi-true-queue` development dependencies and create `package-lock.json`.
 - [ ] Add `tsconfig.json` with `noEmit: true` and `index.ts` as its only source file.
 - [ ] Add an npm `check` script that runs `tsc -p tsconfig.json`.
-- [ ] Use the Pi `0.84.2` `agent_settled` event in `pi-true-queue`.
-- [ ] Add `/queue run` with no arguments as the only pipeline command.
+- [ ] Use the Pi `0.84.2` `agent_settled` event.
+- [ ] Add `/queue run` with no arguments as the only pipeline-start command.
+- [ ] Return a user error when `/queue run` receives no loaded in-memory plan snapshot.
 - [ ] Route standalone queue commands and `+task` input through the existing standalone state path when no plan run is active.
-- [ ] Add plan-run phases:
-  - [ ] `idle`
-  - [ ] `running`
-  - [ ] `compressing`
-  - [ ] `paused`
-  - [ ] `complete`
-- [ ] Persist one versioned plan-run custom entry with:
-  - [ ] Run ID.
-  - [ ] Canonical plan path.
-  - [ ] Structure digest.
-  - [ ] Current batch ID and ordinal.
-  - [ ] Pre-task anchor entry ID.
-  - [ ] Last settled entry ID.
-  - [ ] Current phase.
-  - [ ] Last compression operation ID.
-  - [ ] Pause reason.
-- [ ] Remove future batch body fields from the persisted plan-run schema.
-- [ ] On `/queue run`, request a plan snapshot and capture its current structure digest.
-- [ ] Request only the current incomplete batch body.
-- [ ] Send the shared preamble and current batch as one queued user task.
+- [ ] Add `idle`, `running`, `compressing`, `paused`, and `complete` plan-run phases.
+- [ ] Persist only run ID, plan revision ID, current batch ID and ordinal, pre-task anchor ID, last settled entry ID, phase, last compression operation ID, and pause reason in queue custom entries.
+- [ ] Emit an initial `pi-true-queue:state:v1` payload with `idle` phase on session start.
+- [ ] Emit `pi-true-queue:state:v1` after every plan-run phase change.
+- [ ] Request only the loaded in-memory plan snapshot and current batch from Todo.
 - [ ] Build the queued agent message from only the fixed current-batch rule, shared preamble, and current batch Markdown.
 - [ ] Record the current leaf as the pre-task anchor before `sendUserMessage()`.
-- [ ] Set the phase to `running` before dispatch.
+- [ ] Set phase to `running` before dispatch.
 - [ ] Reject `enqueue_task` while a plan run is active.
-- [ ] Route `enqueue_task` to the existing standalone enqueue path when no plan run is active.
+- [ ] Route `enqueue_task` to the existing standalone path when no plan run is active.
 
 ## 11. Implement the automatic batch completion loop
 
-- [ ] On `agent_settled`, read the last settled entry ID for the active current batch.
-- [ ] Change the phase from `running` to `compressing` before the compression request.
-- [ ] Persist the frozen pre-task anchor and settled end entry.
-- [ ] Emit one compression request with a new operation ID.
-- [ ] Start the fixed result timeout.
-- [ ] Block all next-batch dispatch while compression is active.
-- [ ] On `cancelled`, keep the Markdown batch incomplete and return the queue to `running`.
-- [ ] Let user steering continue the same batch after cancellation.
-- [ ] Emit a new compression request on the next `agent_settled`.
+- [ ] On `agent_settled`, read the last settled entry ID for the active batch.
+- [ ] Change phase from `running` to `compressing` before the compression request and broadcast the new phase.
+- [ ] Emit one compression request with a new operation ID, current plan revision ID, and current checkbox bitmap.
+- [ ] Start the 5,000 ms acceptance timeout and cancel it when `accepted` arrives.
+- [ ] Block next-batch dispatch while compression or summary review is active.
+- [ ] On `cancelled`, keep the batch incomplete, return phase to `running`, and broadcast the phase.
+- [ ] Emit a new compression request on the next `agent_settled` after user steering.
 - [ ] Make `/queue run` retry compression for the frozen range when no new steering turn is needed.
-- [ ] On `failed`, set `paused`, persist the reason, and send no next batch.
-- [ ] On `applied`, request `complete_batch` with the matching run, batch, digest, and operation identity.
-- [ ] Retain the applied compression operation ID when `complete_batch` fails and route retry directly to the pending checkbox write.
-- [ ] Make `/queue run` retry only the pending idempotent checkbox write after this failure.
-- [ ] After checkbox success, request only the next incomplete batch.
-- [ ] Set `complete` and clear the active task when no incomplete batch remains.
-- [ ] Dispatch the next batch only after the prior compression and checkbox write both succeed.
+- [ ] On `failed`, set phase to `paused`, persist the error code, broadcast the phase, and send no next batch.
+- [ ] On `applied`, request `complete_batch` with matching run ID, batch ID, plan revision ID, compression operation ID, and saved checkbox bitmap.
+- [ ] Retain the applied compression operation ID when `complete_batch` fails and route `/queue run` directly to the pending in-memory completion mutation.
+- [ ] After in-memory completion succeeds, request only the next incomplete batch.
+- [ ] Set phase to `complete` and clear the active batch when no incomplete batch remains.
+- [ ] Dispatch the next batch only after compression and internal Todo completion both succeed.
 
-## 12. Implement automatic restart and undo reconciliation
+## 12. Implement live-session handoff, loss handling, and undo reconciliation
 
-- [ ] On queue session start, replay the latest plan-run custom entry.
-- [ ] Finish recovery immediately when the replayed phase is `complete`.
-- [ ] Ask `rpiv-todo` to bind the canonical incomplete plan automatically for every non-complete phase.
-- [ ] Recompute and compare the structure digest.
-- [ ] Scan the active path for pipeline-owned `ctree/range-compact` markers.
-- [ ] Match markers by run ID, batch ID, operation ID, and source hash.
-- [ ] When phase is `compressing` and no matching applied marker exists, re-emit the persisted compression operation.
-- [ ] When a matching applied marker exists and the batch is unchecked, emit the idempotent `complete_batch` request.
-- [ ] When the batch is checked and another incomplete batch exists, set it as current and dispatch it.
-- [ ] When the batch is checked and no incomplete batch exists, set phase to `complete`.
-- [ ] Set phase to `paused` with a fixed mismatch error code for every other file, queue, and marker state combination.
-- [ ] On an `undone` compression result, request `reopen_batch` for the matching batch.
+- [ ] Transfer the project-scoped loaded plan from the planning session to the next foreground execution session within the same Pi process.
+- [ ] Preserve the loaded plan when the planning session shuts down during `/new` or session switch.
+- [ ] Clear the loaded plan and active plan run on extension reload or Pi process restart.
+- [ ] Show one user-safe lost-plan error after reload or restart instead of attempting file or session recovery.
+- [ ] Remove file-based restart reconciliation, canonical-path queue state, structure-digest queue state, incomplete-file binding, and context-marker restart scanning.
+- [ ] On an `undone` result, send `reopen_batch` with the undo operation ID, `revertsOperationId`, plan revision ID, batch ID, and saved checkbox bitmap.
 - [ ] Clear next-batch state that moved off the active path.
-- [ ] Make the reopened batch current in `running` state.
+- [ ] Make the reopened batch current in `running` phase and broadcast the phase.
 - [ ] Restart compression on its next `agent_settled`.
-- [ ] When plan text or order changes during a run, pause before another dispatch.
-- [ ] On the next `/queue run`, capture the new structure digest and resume from the first incomplete batch.
-- [ ] Accept status-only checkbox changes during restart by comparing the normalized structure digest.
+- [ ] Accept a triage-edited plan only through `/todos load`, which creates a new plan revision and replaces the prior in-memory state.
 
 ## 13. Update existing test code
 
-- [ ] Update existing `rpiv-todo` tests for removal of the agent tool and prompt guidance.
-- [ ] Update existing `rpiv-todo` tests for canonical H1 filenames, empty sanitized names, collisions, and automatic rename.
-- [ ] Update existing `rpiv-todo` tests for zero, one, and multiple incomplete project plans.
-- [ ] Update existing `rpiv-todo` tests for automatic file reload, structure digest stability, targeted checkbox writes, `/todos dump`, and the absence of dump-triggered pipeline events.
-- [ ] Update existing `rpiv-todo` tests for plan request/result validation, operation idempotency, and session isolation.
+- [ ] Update existing Pi extension-runner tests for `applySessionMutation()`, serialized mutation order, stale-session rejection, and ordered append behavior.
+- [ ] Update existing `rpiv-todo` tests for removal of the agent tool, prompt guidance, permission entries, setup references, and sibling runtime calls.
+- [ ] Update existing `rpiv-todo` tests for canonical H1 paths, noncanonical rejection, duplicate headings, stable heading-hash batch IDs, and temporary file deletion.
+- [ ] Update existing `rpiv-todo` tests for `/todos load`, final approval, in-memory plan creation, same-process execution-session handoff, and reload loss.
+- [ ] Update existing `rpiv-todo` tests for snapshot, current-batch isolation, exact checkbox bitmap completion, exact bitmap reopen, and operation idempotency.
+- [ ] Update existing `rpiv-todo` tests for queue-phase broadcast handling and `/todos dump` rejection in `running` and `compressing` phases.
+- [ ] Update existing `rpiv-todo` tests for triage dump creation, no queue mutation, triage reload, new revision creation, and file deletion.
 - [ ] Update existing `pi-context-tree` core tests for queue-anchor range planning, opening task retention, steering inclusion, and tool-call grouping.
-- [ ] Update existing `pi-context-tree` extension tests for event requests, public session actions, review cancellation, stale source rejection, and exact marker metadata.
-- [ ] Update existing `pi-context-tree` undo tests for `undone` pipeline results and source restoration.
+- [ ] Update existing `pi-context-tree` extension tests for event acceptance, untimed review, declarative session mutation, stale source rejection, and exact marker metadata.
+- [ ] Update existing `pi-context-tree` undo tests for new undo operation IDs, `revertsOperationId`, saved bitmap results, and source restoration.
 - [ ] Update existing context-tree golden tests for byte-preserved source entries and tail-before-marker order.
-- [ ] Update existing context-tree TUI tests for the event-started summary review.
-- [ ] Update existing Pi extension-runner tests for `runSessionAction`, serialized mutation order, and stale-session rejection.
+- [ ] Update existing context-tree TUI tests for event-started summary review.
