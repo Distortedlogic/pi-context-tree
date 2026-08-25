@@ -194,7 +194,7 @@ export class PanelVm {
 		return this.folds.get(forkId) ?? def;
 	}
 
-	private treeRows(expandAll = false): PanelRow[] {
+	private treeRows(): PanelRow[] {
 		const currentFork = this.leafId ? nearestOpenFork(this.tree, this.leafId, this.forks) : undefined;
 		const rows: PanelRow[] = [];
 		const visit = (e: SessionEntry, depth: number): void => {
@@ -215,7 +215,7 @@ export class PanelVm {
 					current: fork.entryId === currentFork?.entryId,
 				});
 				for (const child of this.tree.children(e.id)) {
-					if (!expandAll && folded && !this.tree.isAncestorOrSelf(child.id, this.leafId)) continue;
+					if (folded && !this.tree.isAncestorOrSelf(child.id, this.leafId)) continue;
 					visit(child, depth + 1);
 				}
 				return;

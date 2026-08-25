@@ -4,13 +4,13 @@ import {
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
 	type CtreeRangeCompactData,
-	type RangeCandidate,
 	type RangePlan,
-	SessionTree,
 	fmtTokens,
 	planRange,
 	rangeCandidates,
 	renderRangeTail,
+	resolveRangeEndpoint,
+	serializeEntry,
 } from "@pi-context-tree/core";
 import { type CmdCtxLike, type Deps, type PiLike, leafIdOf, modelKey } from "./adapter.ts";
 import { refreshAmbient } from "./ambient.ts";
@@ -52,22 +52,6 @@ export async function selectNativeEntry(
 	);
 }
 
-export function resolveRangeEndpoint(
-	tree: SessionTree,
-	sourceLeafId: string,
-	selectedEntryId: string,
-	phase: RangePhase,
-): RangeCandidate {
-	const endpoint = rangeCandidates(tree, sourceLeafId).find((candidate) =>
-		candidate.entryIds.includes(selectedEntryId),
-	);
-	if (!endpoint) throw new Error(`the selected ${phase} entry is off-path or structural`);
-	if (!endpoint.selectable) {
-		throw new Error(endpoint.protectReason ?? `the selected ${phase} entry is protected`);
-	}
-	return endpoint;
-}
-
 export function buildRangeCompactData(
 	plan: RangePlan,
 	approvedSummary: string,
@@ -89,7 +73,7 @@ export function buildRangeCompactData(
 	};
 }
 
-/** Apply a reviewed panel plan. The session is revalidated before every write. */
+/** Apply a reviewed range plan. The session is revalidated before every write. */
 export async function applyRangeCompressionPlan(
 	pi: PiLike,
 	ctx: CmdCtxLike,
@@ -98,7 +82,7 @@ export async function applyRangeCompressionPlan(
 	deps: Deps,
 ): Promise<void> {
 	if (leafIdOf(ctx) !== initialPlan.sourceLeafId) {
-		ctx.ui.notify("session changed while the range panel was open — re-run /compress (nothing written)", "warning");
+		ctx.ui.notify("session changed while the range selector was open — re-run /compress (nothing written)", "warning");
 		return;
 	}
 
@@ -188,51 +172,52 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 		return;
 	}
 
-	let firstEndpoint: RangeCandidate | undefined;
+	const candidates = rangeCandidates(state.tree, sourceLeafId);
+	let firstEntryId = "";
 	let firstInitialId = sourceLeafId;
-	while (!firstEndpoint) {
+	while (!firstEntryId) {
 		const selectedEntryId = await selectNativeEntry(ctx, "start", firstInitialId);
 		if (selectedEntryId === undefined) return;
-		try {
-			firstEndpoint = resolveRangeEndpoint(state.tree, sourceLeafId, selectedEntryId, "start");
-		} catch (error) {
-			ctx.ui.notify(`Invalid range start: ${(error as Error).message}. Select another entry.`, "warning");
+		const endpoint = resolveRangeEndpoint(candidates, selectedEntryId, "start");
+		if (!endpoint.ok) {
+			ctx.ui.notify(`Invalid range start: ${endpoint.reason}. Select another entry.`, "warning");
 			firstInitialId = selectedEntryId;
+			continue;
 		}
+		firstEntryId = endpoint.entryId;
 	}
 
-	let secondInitialId = firstEndpoint.startEntryId;
+	let secondInitialId = firstEntryId;
 	while (true) {
 		const selectedEntryId = await selectNativeEntry(ctx, "end", secondInitialId);
 		if (selectedEntryId === undefined) return;
-
-		let secondEndpoint: RangeCandidate;
-		try {
-			secondEndpoint = resolveRangeEndpoint(state.tree, sourceLeafId, selectedEntryId, "end");
-		} catch (error) {
-			ctx.ui.notify(`Invalid range end: ${(error as Error).message}. Select another entry.`, "warning");
+		const endpoint = resolveRangeEndpoint(candidates, selectedEntryId, "end");
+		if (!endpoint.ok) {
+			ctx.ui.notify(`Invalid range end: ${endpoint.reason}. Select another entry.`, "warning");
 			secondInitialId = selectedEntryId;
 			continue;
 		}
 
-		const [normalizedStart, normalizedEnd] =
-			firstEndpoint.pathIndex <= secondEndpoint.pathIndex
-				? [firstEndpoint, secondEndpoint]
-				: [secondEndpoint, firstEndpoint];
 		let plan: RangePlan;
 		try {
-			plan = planRange(state.tree, sourceLeafId, normalizedStart.startEntryId, normalizedEnd.endEntryId);
+			plan = planRange(state.tree, sourceLeafId, firstEntryId, endpoint.entryId);
 		} catch (error) {
 			ctx.ui.notify(`Invalid range: ${(error as Error).message}. Select another last entry.`, "warning");
 			secondInitialId = selectedEntryId;
 			continue;
 		}
 
+		const startEntry = state.tree.get(plan.startEntryId);
+		const endEntry = state.tree.get(plan.endEntryId);
+		const startLabel = startEntry
+			? (serializeEntry(startEntry)?.split("\n", 1)[0] ?? startEntry.type)
+			: plan.startEntryId;
+		const endLabel = endEntry ? (serializeEntry(endEntry)?.split("\n", 1)[0] ?? endEntry.type) : plan.endEntryId;
 		const confirmed = await ctx.ui.confirm(
 			"Compress selected range",
 			[
-				`Start: ${normalizedStart.label}`,
-				`End: ${normalizedEnd.label}`,
+				`Start: ${startLabel}`,
+				`End: ${endLabel}`,
 				`${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`,
 			].join("\n"),
 		);
