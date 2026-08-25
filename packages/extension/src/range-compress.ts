@@ -1,6 +1,6 @@
 import { TreeSelectorComponent } from "@earendil-works/pi-coding-agent";
 import {
-	CHARS_PER_TOKEN,
+	estimateTextTokens,
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
 	type CtreeRangeCompactData,
@@ -19,15 +19,8 @@ import { deriveState } from "./state.ts";
 
 type RangePhase = "start" | "end";
 
-type NativeSelectorContext = CmdCtxLike & {
-	sessionManager: CmdCtxLike["sessionManager"] & {
-		getTree(): ConstructorParameters<typeof TreeSelectorComponent>[0];
-		getLeafId(): string | null;
-	};
-};
-
 export async function selectNativeEntry(
-	ctx: NativeSelectorContext,
+	ctx: CmdCtxLike,
 	phase: RangePhase,
 	initialSelectedId: string,
 ): Promise<string | undefined> {
@@ -134,7 +127,7 @@ export async function applyRangeCompressionPlan(
 	}
 
 	const approvedSummary = reviewed.trim();
-	const summaryEstTokens = Math.ceil(approvedSummary.length / CHARS_PER_TOKEN);
+	const summaryEstTokens = estimateTextTokens(approvedSummary);
 	const reclaimedEstTokens = plan.selectedEstTokens - summaryEstTokens;
 	const details: CtreeRangeCompactData = {
 		v: 1,
@@ -181,8 +174,7 @@ export async function applyRangeCompressionPlan(
 export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: string, deps: Deps): Promise<void> {
 	const instructions = args.trim() || undefined;
 	await ctx.waitForIdle();
-	const nativeCtx = ctx as NativeSelectorContext;
-	const sourceLeafId = nativeCtx.sessionManager.getLeafId();
+	const sourceLeafId = ctx.sessionManager.getLeafId();
 	const state = deriveState(ctx);
 	if (!sourceLeafId || !state.tree.get(sourceLeafId)) {
 		ctx.ui.notify("empty session — nothing to compress", "warning");
@@ -192,7 +184,7 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 	let firstEndpoint: RangeCandidate | undefined;
 	let firstInitialId = sourceLeafId;
 	while (!firstEndpoint) {
-		const selectedEntryId = await selectNativeEntry(nativeCtx, "start", firstInitialId);
+		const selectedEntryId = await selectNativeEntry(ctx, "start", firstInitialId);
 		if (selectedEntryId === undefined) return;
 		try {
 			firstEndpoint = resolveRangeEndpoint(state.tree, sourceLeafId, selectedEntryId, "start");
@@ -204,7 +196,7 @@ export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: st
 
 	let secondInitialId = firstEndpoint.startEntryId;
 	while (true) {
-		const selectedEntryId = await selectNativeEntry(nativeCtx, "end", secondInitialId);
+		const selectedEntryId = await selectNativeEntry(ctx, "end", secondInitialId);
 		if (selectedEntryId === undefined) return;
 
 		let secondEndpoint: RangeCandidate;

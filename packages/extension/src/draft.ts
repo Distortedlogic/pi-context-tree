@@ -1,10 +1,6 @@
-/**
- * Decision-record drafting via the branch's own model (F2.2), using pi-ai's
- * complete() with auth borrowed from pi's model registry — the same pattern
- * pi's own example extensions use (qna.ts, handoff.ts).
- */
+/** Decision-record drafting through Pi's public model registry. */
 
-import { CHARS_PER_TOKEN } from "@pi-context-tree/core";
+import { estimateTextTokens } from "@pi-context-tree/core";
 import type { CmdCtxLike, DraftFn, ModelLike } from "./adapter.ts";
 import { resolveModel } from "./adapter.ts";
 
@@ -13,8 +9,6 @@ export const DRAFT_SYSTEM_PROMPT = [
 	"Output ONLY the markdown record, no preamble. Target 1,000–2,000 tokens.",
 	"Be specific: real file paths, real failure modes, real numbers from the transcript.",
 ].join("\n");
-
-export const RANGE_SUMMARY_OUTPUT_RESERVE_TOKENS = 4096;
 
 export const RANGE_COMPRESSION_SYSTEM_PROMPT = [
 	"Summarize one user-selected range from a coding-agent session.",
@@ -34,7 +28,6 @@ export const RANGE_COMPRESSION_SYSTEM_PROMPT = [
 export const realDraft: DraftFn = async (ctx, modelRef, system, user) => {
 	const model: ModelLike | undefined = (modelRef ? resolveModel(ctx, modelRef) : undefined) ?? ctx.model;
 	if (!model) throw new Error("no model available for drafting");
-	if (!ctx.modelRegistry.complete) throw new Error("model registry completion API is unavailable");
 	const response = await ctx.modelRegistry.complete(model, {
 		systemPrompt: system,
 		messages: [{ role: "user", content: [{ type: "text", text: user }], timestamp: Date.now() }],
@@ -79,18 +72,20 @@ export function rangeCompressionUserPrompt(selectedSerialized: string, instructi
 }
 
 function assertRangeSummaryFits(ctx: CmdCtxLike, userPrompt: string): void {
-	const contextWindow = ctx.model?.contextWindow ?? ctx.getContextUsage?.()?.contextWindow;
-	const modelRef = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "the current model";
+	if (!ctx.model) throw new Error("cannot check the selected range size because no current model is available");
+	const contextWindow = ctx.model.contextWindow ?? ctx.getContextUsage?.()?.contextWindow;
+	const modelRef = `${ctx.model.provider}/${ctx.model.id}`;
 	if (!contextWindow || contextWindow <= 0) {
 		throw new Error(
 			`cannot check the selected range size because ${modelRef} does not report a context window; select a smaller range or choose a model with context metadata`,
 		);
 	}
-	const inputTokens = Math.ceil((RANGE_COMPRESSION_SYSTEM_PROMPT.length + userPrompt.length) / CHARS_PER_TOKEN);
-	const requiredTokens = inputTokens + RANGE_SUMMARY_OUTPUT_RESERVE_TOKENS;
+	const inputTokens = estimateTextTokens(`${RANGE_COMPRESSION_SYSTEM_PROMPT}\n${userPrompt}`);
+	const summaryOutputReserveTokens = Math.min(4096, ctx.model.maxTokens);
+	const requiredTokens = inputTokens + summaryOutputReserveTokens;
 	if (requiredTokens > contextWindow) {
 		throw new Error(
-			`selected range is too large for ${modelRef}: the prompt needs ~${inputTokens} input tokens plus ${RANGE_SUMMARY_OUTPUT_RESERVE_TOKENS} reserved output tokens, but the context window is ${contextWindow}; select a smaller range with /compress or switch the current model`,
+			`selected range is too large for ${modelRef}: the prompt needs ~${inputTokens} input tokens plus ${summaryOutputReserveTokens} reserved output tokens, but the context window is ${contextWindow}; select a smaller range with /compress or switch the current model`,
 		);
 	}
 }

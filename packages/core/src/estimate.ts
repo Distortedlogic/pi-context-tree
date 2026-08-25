@@ -10,6 +10,10 @@ import { isMessageEntry } from "./types.ts";
 export const CHARS_PER_TOKEN = 4;
 export const IMAGE_CHARS = 4800;
 
+export function estimateTextTokens(text: string): number {
+	return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
 function contentChars(content: UserContent): number {
 	if (typeof content === "string") return content.length;
 	let chars = 0;
