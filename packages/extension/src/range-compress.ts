@@ -1,18 +1,79 @@
+import { TreeSelectorComponent } from "@earendil-works/pi-coding-agent";
 import {
 	CHARS_PER_TOKEN,
 	CTREE_RANGE_COMPACT,
 	CTREE_RANGE_TAIL,
 	type CtreeRangeCompactData,
+	type RangeCandidate,
 	type RangePlan,
+	SessionTree,
 	fmtTokens,
 	planRange,
+	rangeCandidates,
 	renderRangeTail,
 } from "@pi-context-tree/core";
 import { type CmdCtxLike, type Deps, type PiLike, leafIdOf, modelKey } from "./adapter.ts";
 import { refreshAmbient } from "./ambient.ts";
 import { draftRangeSummary } from "./draft.ts";
-import { openPanel } from "./panel-cmd.ts";
 import { deriveState } from "./state.ts";
+
+type RangePhase = "start" | "end";
+
+type NativeSelectorContext = CmdCtxLike & {
+	sessionManager: CmdCtxLike["sessionManager"] & {
+		getTree(): ConstructorParameters<typeof TreeSelectorComponent>[0];
+		getLeafId(): string | null;
+	};
+};
+
+export async function selectNativeEntry(
+	ctx: NativeSelectorContext,
+	phase: RangePhase,
+	initialSelectedId: string,
+): Promise<string | undefined> {
+	ctx.ui.notify(
+		phase === "start" ? "Select the first entry of the range" : "Select the last entry of the range",
+		"info",
+	);
+	if (!ctx.ui.custom) {
+		ctx.ui.notify("The native tree selector is not available in this mode.", "warning");
+		return undefined;
+	}
+	return ctx.ui.custom<string | undefined>(
+		(
+			tui: { terminal: { rows: number } },
+			_theme: unknown,
+			_keybindings: unknown,
+			done: (entryId: string | undefined) => void,
+		) =>
+			new TreeSelectorComponent(
+				ctx.sessionManager.getTree(),
+				ctx.sessionManager.getLeafId(),
+				tui.terminal.rows,
+				(entryId) => done(entryId),
+				() => done(undefined),
+				undefined,
+				initialSelectedId,
+				"default",
+			),
+	);
+}
+
+export function resolveRangeEndpoint(
+	tree: SessionTree,
+	sourceLeafId: string,
+	selectedEntryId: string,
+	phase: RangePhase,
+): RangeCandidate {
+	const endpoint = rangeCandidates(tree, sourceLeafId).find((candidate) =>
+		candidate.entryIds.includes(selectedEntryId),
+	);
+	if (!endpoint) throw new Error(`the selected ${phase} entry is off-path or structural`);
+	if (!endpoint.selectable) {
+		throw new Error(endpoint.protectReason ?? `the selected ${phase} entry is protected`);
+	}
+	return endpoint;
+}
 
 /** Apply a reviewed panel plan. The session is revalidated before every write. */
 export async function applyRangeCompressionPlan(
@@ -120,26 +181,67 @@ export async function applyRangeCompressionPlan(
 export async function rangeCompressHandler(pi: PiLike, ctx: CmdCtxLike, args: string, deps: Deps): Promise<void> {
 	const instructions = args.trim() || undefined;
 	await ctx.waitForIdle();
+	const nativeCtx = ctx as NativeSelectorContext;
+	const sourceLeafId = nativeCtx.sessionManager.getLeafId();
 	const state = deriveState(ctx);
-	if (!state.leafId) {
+	if (!sourceLeafId || !state.tree.get(sourceLeafId)) {
 		ctx.ui.notify("empty session — nothing to compress", "warning");
 		return;
 	}
-	const sourceLeafId = state.leafId;
-	const action = await openPanel(pi, ctx, {
-		initialView: "range",
-		compressInstructions: instructions,
-	});
-	if (!action || action.type === "close") return;
-	if (action.type !== "range-apply") {
-		ctx.ui.notify("range compression cancelled — no range selected, nothing written", "info");
+
+	let firstEndpoint: RangeCandidate | undefined;
+	let firstInitialId = sourceLeafId;
+	while (!firstEndpoint) {
+		const selectedEntryId = await selectNativeEntry(nativeCtx, "start", firstInitialId);
+		if (selectedEntryId === undefined) return;
+		try {
+			firstEndpoint = resolveRangeEndpoint(state.tree, sourceLeafId, selectedEntryId, "start");
+		} catch (error) {
+			ctx.ui.notify(`Invalid range start: ${(error as Error).message}. Select another entry.`, "warning");
+			firstInitialId = selectedEntryId;
+		}
+	}
+
+	let secondInitialId = firstEndpoint.startEntryId;
+	while (true) {
+		const selectedEntryId = await selectNativeEntry(nativeCtx, "end", secondInitialId);
+		if (selectedEntryId === undefined) return;
+
+		let secondEndpoint: RangeCandidate;
+		try {
+			secondEndpoint = resolveRangeEndpoint(state.tree, sourceLeafId, selectedEntryId, "end");
+		} catch (error) {
+			ctx.ui.notify(`Invalid range end: ${(error as Error).message}. Select another entry.`, "warning");
+			secondInitialId = selectedEntryId;
+			continue;
+		}
+
+		const [normalizedStart, normalizedEnd] =
+			firstEndpoint.pathIndex <= secondEndpoint.pathIndex
+				? [firstEndpoint, secondEndpoint]
+				: [secondEndpoint, firstEndpoint];
+		let plan: RangePlan;
+		try {
+			plan = planRange(state.tree, sourceLeafId, normalizedStart.startEntryId, normalizedEnd.endEntryId);
+		} catch (error) {
+			ctx.ui.notify(`Invalid range: ${(error as Error).message}. Select another last entry.`, "warning");
+			secondInitialId = selectedEntryId;
+			continue;
+		}
+
+		const confirmed = await ctx.ui.confirm(
+			"Compress selected range",
+			[
+				`Start: ${normalizedStart.label}`,
+				`End: ${normalizedEnd.label}`,
+				`${plan.selectedEntryIds.length} entries · ~${fmtTokens(plan.selectedEstTokens)} tokens`,
+			].join("\n"),
+		);
+		if (!confirmed) return;
+
+		await applyRangeCompressionPlan(pi, ctx, plan, instructions, deps);
 		return;
 	}
-	if (action.plan.sourceLeafId !== sourceLeafId) {
-		ctx.ui.notify("session changed while the range panel was open — re-run /compress (nothing written)", "warning");
-		return;
-	}
-	await applyRangeCompressionPlan(pi, ctx, action.plan, instructions, deps);
 }
 
 export function registerRangeCompress(pi: PiLike, deps: Deps): void {
