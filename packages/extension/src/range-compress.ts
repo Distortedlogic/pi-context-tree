@@ -183,28 +183,36 @@ export async function runBlockingRangeCompression(
 	instructions: string | undefined,
 	deps: Deps,
 ): Promise<boolean> {
-	if (!ctx.ui.custom) {
-		ctx.ui.notify("the blocking compression view is not available in this mode", "warning");
-		return false;
-	}
-	const result = await ctx.ui.custom<boolean>((tui, theme, _keybindings, done) => {
-		const loader = new Loader(
-			tui,
-			(text) => theme.fg("accent", text),
-			(text) => theme.fg("muted", text),
-			"Compressing selected range…",
-		);
-		void Promise.resolve()
-			.then(() => applyRangeCompressionPlan(pi, ctx, plan, instructions, deps))
-			.then(
-				(success) => done(success),
-				(error: unknown) => {
-					ctx.ui.notify(`range compression failed: ${(error as Error).message} (nothing else written)`, "error");
-					done(false);
+	if (!ctx.ui.custom) return applyRangeCompressionPlan(pi, ctx, plan, instructions, deps);
+
+	const result = await ctx.ui.custom<boolean>(
+		(tui, theme, _keybindings, done) => {
+			const loader = Object.assign(
+				new Loader(
+					tui,
+					(text) => theme.fg("accent", text),
+					(text) => theme.fg("muted", text),
+					"Compressing selected range…",
+				),
+				{
+					focused: true,
+					// Pi handles global interrupts before this local input sink.
+					handleInput: (_data: string): void => {},
 				},
 			);
-		return loader;
-	});
+			void Promise.resolve()
+				.then(() => applyRangeCompressionPlan(pi, ctx, plan, instructions, deps))
+				.then(
+					(success) => done(success),
+					(error: unknown) => {
+						ctx.ui.notify(`range compression failed: ${(error as Error).message} (nothing else written)`, "error");
+						done(false);
+					},
+				);
+			return loader;
+		},
+		{ overlay: false },
+	);
 	return result ?? false;
 }
 
