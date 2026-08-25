@@ -92,20 +92,11 @@ export async function applyRangeCompressionPlan(
 	pi: PiLike,
 	ctx: CmdCtxLike,
 	initialPlan: RangePlan,
+	summaryModel: string,
 	instructions: string | undefined,
 	deps: Deps,
 	progress?: RangeCompressionProgress,
 ): Promise<boolean> {
-	if (leafIdOf(ctx) !== initialPlan.sourceLeafId) {
-		ctx.ui.notify("session changed while the range selector was open — re-run /compress (nothing written)", "warning");
-		return false;
-	}
-
-	const summaryModel = modelKey(ctx.model);
-	if (!summaryModel) {
-		ctx.ui.notify("no current model is available for the range summary — nothing written", "error");
-		return false;
-	}
 	progress?.("Drafting summary");
 	if (!progress) ctx.ui.notify(`drafting range summary with ${summaryModel}…`, "info");
 	let generatedSummary: string;
@@ -180,11 +171,20 @@ export async function runBlockingRangeCompression(
 	instructions: string | undefined,
 	deps: Deps,
 ): Promise<boolean> {
-	if (!ctx.ui.custom) return applyRangeCompressionPlan(pi, ctx, plan, instructions, deps);
+	if (leafIdOf(ctx) !== plan.sourceLeafId) {
+		ctx.ui.notify("session changed while the range selector was open — re-run /compress (nothing written)", "warning");
+		return false;
+	}
+	const summaryModel = modelKey(ctx.model);
+	if (!summaryModel) {
+		ctx.ui.notify("no current model is available for the range summary — nothing written", "error");
+		return false;
+	}
+	if (!ctx.ui.custom) return applyRangeCompressionPlan(pi, ctx, plan, summaryModel, instructions, deps);
 
 	const result = await ctx.ui.custom<boolean>(
 		(tui, theme, _keybindings, done) => {
-			const rangeDetails = `summary model ${modelKey(ctx.model) ?? "unavailable"} · ${plan.selectedEntryIds.length} selected entries · ~${fmtTokens(plan.selectedEstTokens)} source tokens`;
+			const rangeDetails = `summary model ${summaryModel} · ${plan.selectedEntryIds.length} selected entries · ~${fmtTokens(plan.selectedEstTokens)} source tokens`;
 			const loader = Object.assign(
 				new Loader(
 					tui,
@@ -207,7 +207,7 @@ export async function runBlockingRangeCompression(
 			};
 			void Promise.resolve()
 				.then(() =>
-					applyRangeCompressionPlan(pi, ctx, plan, instructions, deps, (stage) => {
+					applyRangeCompressionPlan(pi, ctx, plan, summaryModel, instructions, deps, (stage) => {
 						loader.setMessage(`${stage} · ${rangeDetails}`);
 					}),
 				)
