@@ -1,3 +1,6 @@
+import { type Static, Type } from "typebox";
+import { Value } from "typebox/value";
+
 /**
  * Pi session-format types (verified against earendil-works/pi-mono@0.84.3
  * docs/session-format.md and src/core/session-manager.ts) plus ctree's own
@@ -297,21 +300,25 @@ export interface CtreeDecisionDetails {
  * ctree/range-tail custom message. Unknown fields are allowed so a v1 reader
  * does not reject additive schema changes.
  */
-export interface CtreeRangeCompactData {
-	v: 1;
-	sourceLeafId: string;
-	anchorId: string;
-	startEntryId: string;
-	endEntryId: string;
-	selectedEntryIds: string[];
-	selectedEstTokens: number;
-	summaryEstTokens: number;
-	reclaimedEstTokens: number;
-	summaryModel: string;
-	/** First eight hexadecimal characters of SHA-256(serialized selected source). */
-	sourceSha8: string;
-	[key: string]: unknown;
-}
+export const CtreeRangeCompactDataSchema = Type.Object(
+	{
+		v: Type.Literal(1),
+		sourceLeafId: Type.String(),
+		anchorId: Type.String(),
+		startEntryId: Type.String(),
+		endEntryId: Type.String(),
+		selectedEntryIds: Type.Array(Type.String()),
+		selectedEstTokens: Type.Number(),
+		summaryEstTokens: Type.Number(),
+		reclaimedEstTokens: Type.Number(),
+		summaryModel: Type.String(),
+		/** First eight hexadecimal characters of SHA-256(serialized selected source). */
+		sourceSha8: Type.String(),
+	},
+	{ additionalProperties: true },
+);
+
+export type CtreeRangeCompactData = Static<typeof CtreeRangeCompactDataSchema>;
 
 /** The visible range-tail message repeats the marker metadata in details. */
 export type CtreeRangeTailDetails = CtreeRangeCompactData;
@@ -350,36 +357,16 @@ export function isCtreeRangeTailEntry(e: SessionEntry): e is CustomMessageEntry 
 	return isCustomMessageEntry(e) && e.customType === CTREE_RANGE_TAIL;
 }
 
-/** Validate the fields required to consume the known v1 range schema. */
-export function isCtreeRangeCompactData(value: unknown): value is CtreeRangeCompactData {
-	if (typeof value !== "object" || value === null) return false;
-	const data = value as Record<string, unknown>;
-	return (
-		data.v === 1 &&
-		typeof data.sourceLeafId === "string" &&
-		typeof data.anchorId === "string" &&
-		typeof data.startEntryId === "string" &&
-		typeof data.endEntryId === "string" &&
-		Array.isArray(data.selectedEntryIds) &&
-		data.selectedEntryIds.every((id) => typeof id === "string") &&
-		typeof data.selectedEstTokens === "number" &&
-		typeof data.summaryEstTokens === "number" &&
-		typeof data.reclaimedEstTokens === "number" &&
-		typeof data.summaryModel === "string" &&
-		typeof data.sourceSha8 === "string"
-	);
-}
-
 /** Known v1 data for a marker; later versions remain preserved on the entry. */
 export function ctreeRangeCompactData(e: SessionEntry): CtreeRangeCompactData | undefined {
 	if (!isCtreeRangeCompactEntry(e)) return undefined;
-	return isCtreeRangeCompactData(e.data) ? e.data : undefined;
+	return Value.Check(CtreeRangeCompactDataSchema, e.data) ? e.data : undefined;
 }
 
 /** Known v1 details for a visible tail; later versions remain preserved on the entry. */
 export function ctreeRangeTailDetails(e: SessionEntry): CtreeRangeTailDetails | undefined {
 	if (!isCtreeRangeTailEntry(e)) return undefined;
-	return isCtreeRangeCompactData(e.details) ? e.details : undefined;
+	return Value.Check(CtreeRangeCompactDataSchema, e.details) ? e.details : undefined;
 }
 
 export function ctreeForkData(e: SessionEntry): CtreeForkData | undefined {
