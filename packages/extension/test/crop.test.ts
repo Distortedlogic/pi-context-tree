@@ -1,7 +1,7 @@
 import { SessionTree, cropCandidates, planCrop, planRange, planRemoveTurns } from "@pi-context-tree/core";
 import { describe, expect, it, vi } from "vitest";
 import { applyCropPlan, cropHandler, parseCropFlags } from "../src/crop-cmd.ts";
-import { applyRangeCompressionPlan, rangeCompressHandler } from "../src/range-compress.ts";
+import { rangeCompressHandler, runBlockingRangeCompression } from "../src/range-compress.ts";
 import { type FakeWorld, entriesByType, makeFake } from "./fake-pi.ts";
 
 const nativeSelectorHarness = vi.hoisted(() => ({
@@ -432,41 +432,88 @@ describe("/compress native two-pass selector", () => {
 	});
 });
 
-describe("applyRangeCompressionPlan", () => {
-	it("orders navigation before the visible summary and marker", async () => {
+function installBlockingUi(w: FakeWorld): () => boolean {
+	let busy = false;
+	w.ui.custom = <T>(factory: unknown): Promise<T> =>
+		new Promise<T>((resolve) => {
+			busy = true;
+			const done = (value: unknown): void => {
+				busy = false;
+				resolve(value as T);
+			};
+			(factory as (tui: unknown, theme: unknown, keybindings: unknown, done: (value: unknown) => void) => unknown)(
+				{ terminal: { rows: 42 }, requestRender: () => {} },
+				{ fg: (_color: string, text: string) => text },
+				undefined,
+				done,
+			);
+		});
+	return () => busy;
+}
+
+describe("range compression behavior", () => {
+	it("stays busy until the generated summary becomes compressed context", async () => {
 		const w = makeFake();
 		const { plan } = seedRangeSession(w);
 		const before = w.session.entries.length;
-		const events: string[] = [];
-		const navigate = w.ctx.navigateTree;
-		w.ctx.navigateTree = async (target, options) => {
-			events.push("navigate");
-			return navigate(target, options);
-		};
-		const sendMessage = w.pi.sendMessage;
-		w.pi.sendMessage = (message, options) => {
-			events.push("summary");
-			sendMessage(message, options);
-		};
-		const appendEntry = w.pi.appendEntry;
-		w.pi.appendEntry = (customType, data) => {
-			if (customType === "ctree/range-compact") events.push("marker");
-			appendEntry(customType, data);
-		};
-		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
-
-		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
-			draft: async () => "approved range summary",
+		const isBusy = installBlockingUi(w);
+		let markDraftStarted!: () => void;
+		const draftStarted = new Promise<void>((resolve) => {
+			markDraftStarted = resolve;
+		});
+		let resolveDraft!: (summary: string) => void;
+		const pendingDraft = new Promise<string>((resolve) => {
+			resolveDraft = resolve;
 		});
 
-		expect(events).toEqual(["navigate", "summary", "marker"]);
-		expect(w.calls.navigate).toEqual([{ target: plan.anchorId, options: { summarize: false } }]);
-		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0];
+		let settled = false;
+		const compression = runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+			draft: async () => {
+				markDraftStarted();
+				return pendingDraft;
+			},
+		});
+		void compression.then(() => {
+			settled = true;
+		});
+		await draftStarted;
+		await Promise.resolve();
+
+		expect(isBusy()).toBe(true);
+		expect(settled).toBe(false);
+		expectNoRangeWrites(w);
+
+		resolveDraft("  generated range summary  ");
+		expect(await compression).toBe(true);
+		expect(isBusy()).toBe(false);
+
+		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0] as { content?: string };
 		const marker = entriesByType(w.session, "custom", "ctree/range-compact")[0];
-		expect(tail).toBeDefined();
-		expect(marker?.parentId).toBe(tail?.id);
+		expect(tail.content).toContain("generated range summary");
+		expect(tail.content).not.toContain("selected source question");
+		expect(tail.content).not.toContain("selected source answer");
+		expect(marker?.parentId).toBe((tail as { id?: string }).id);
 		expect(w.session.entries.length).toBe(before + 2);
 		expect(plan.selectedEntryIds.every((id) => w.session.entries.some((entry) => entry.id === id))).toBe(true);
+	});
+
+	it("writes nothing when summary generation fails", async () => {
+		const w = makeFake();
+		const { plan } = seedRangeSession(w);
+		const before = w.session.entries.length;
+		const isBusy = installBlockingUi(w);
+
+		expect(
+			await runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+				draft: async () => {
+					throw new Error("generation failed");
+				},
+			}),
+		).toBe(false);
+
+		expect(isBusy()).toBe(false);
+		expect(w.session.entries.length).toBe(before);
+		expectNoRangeWrites(w);
 	});
 
 	it("writes nothing when anchor navigation is cancelled", async () => {
@@ -474,10 +521,9 @@ describe("applyRangeCompressionPlan", () => {
 		const { plan } = seedRangeSession(w);
 		const before = w.session.entries.length;
 		w.ctx.navigateTree = async () => ({ cancelled: true });
-		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
 
-		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
-			draft: async () => "approved range summary",
+		await runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "generated range summary",
 		});
 
 		expect(w.session.entries.length).toBe(before);
@@ -491,33 +537,26 @@ describe("applyRangeCompressionPlan", () => {
 		const { plan } = seedRangeSession(w);
 		w.session.user("new leaf after selection");
 		const before = w.session.entries.length;
-		let drafted = false;
 
-		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
-			draft: async () => {
-				drafted = true;
-				return "must not run";
-			},
+		await runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "unused summary",
 		});
 
-		expect(drafted).toBe(false);
-		expect(w.calls.navigate).toHaveLength(0);
 		expect(w.session.entries.length).toBe(before);
-		expect(entriesByType(w.session, "custom_message", "ctree/range-tail")).toHaveLength(0);
+		expectNoRangeWrites(w);
 	});
 
-	it("preserves the unchanged continuation after the approved summary", async () => {
+	it("preserves the unchanged continuation after the generated summary", async () => {
 		const w = makeFake();
 		const { plan } = seedRangeSession(w);
-		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
 
-		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
-			draft: async () => "approved range summary",
+		await runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "generated range summary",
 		});
 
 		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0] as { content?: string };
 		const content = tail.content ?? "";
-		expect(content).toContain("approved range summary");
+		expect(content).toContain("generated range summary");
 		expect(content).toContain("continuation question");
 		expect(content).toContain("continuation answer");
 		expect(content.indexOf("continuation question")).toBeLessThan(content.indexOf("continuation answer"));
@@ -532,15 +571,14 @@ describe("applyRangeCompressionPlan", () => {
 		const start = w.session.user("selected through leaf");
 		const leaf = w.session.assistant("selected final answer");
 		const plan = planRange(SessionTree.fromEntries(w.session.entries), leaf, start, leaf);
-		w.ui.editorQueue.push("__ACCEPT_PREFILL__");
 
-		await applyRangeCompressionPlan(w.pi, w.ctx, plan, undefined, {
-			draft: async () => "approved leaf summary",
+		await runBlockingRangeCompression(w.pi, w.ctx, plan, undefined, {
+			draft: async () => "generated leaf summary",
 		});
 
 		const tail = entriesByType(w.session, "custom_message", "ctree/range-tail")[0] as { content?: string };
 		const content = tail.content ?? "";
-		expect(content).toContain("approved leaf summary");
+		expect(content).toContain("generated leaf summary");
 		expect(content).not.toContain("unchanged continuation");
 		expect(content).not.toContain("selected through leaf");
 		expect(content).not.toContain("selected final answer");
